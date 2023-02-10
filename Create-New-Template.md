@@ -1,5 +1,5 @@
 
-La page des Providers Template se trouve dans la page des Provider.
+The Template Providers page can be found in the Providers page.
 *Administration/PrivilegedAccess/Provider/ProviderTemplate*
 
 ![alt text](./Images/6b59fb3e-9b89-4b76-887b-fe769598462c.png)
@@ -23,20 +23,13 @@ We then determine the fields that the accounts and providers will implement.
 
 Types are:
 
--   Username (string)
-    
--   Password (string)
-    
--   Description (string)
-    
--   UniqueIdentifier (string)
-    
--   String
-    
--   Int
-    
--   Bool
-    
+-   Username (string)  
+-   Password (string)   
+-   Description (string)   
+-   UniqueIdentifier (string)  
+-   String  
+-   Int  
+-   Bool  
 -   Sensitive Data (SecureString)
 
 The **Mandatory** field is used to determine if the fields will be required for creation/edition.
