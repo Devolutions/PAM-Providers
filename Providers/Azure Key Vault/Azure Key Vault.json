@@ -1,0 +1,149 @@
+{
+  "version": 1,
+  "template": {
+    "id": "6e2aa14f-aef0-48ce-8a47-606f82d65bc3",
+    "name": "Azure Key Vault",
+    "description": "",
+    "imageName": "SampleLetterABlue",
+    "providerProperties": [
+      {
+        "id": "f8c6aa95-0afa-4f65-97f3-d6d0bb37b801",
+        "name": "TenantID",
+        "isMandatory": true
+      },
+      {
+        "id": "c7e1e64e-e2b3-4cc6-ae4e-1807be879378",
+        "name": "ApplicationID",
+        "isMandatory": true
+      },
+      {
+        "id": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
+        "name": "Password",
+        "type": 3,
+        "isMandatory": true
+      },
+      {
+        "id": "65001f49-e792-4e01-992f-5a4982e38ec0",
+        "name": "KeyVaultName",
+        "isMandatory": true
+      }
+    ],
+    "accountProperties": [
+      {
+        "id": "c24049c5-9ec4-4f26-832c-86f283067c73",
+        "name": "Name",
+        "type": 4,
+        "isMandatory": true
+      },
+      {
+        "id": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
+        "name": "Secret",
+        "type": 3
+      },
+      {
+        "id": "54b6d680-0b89-4ce6-a512-bc98e0008fd7",
+        "name": "ID",
+        "type": 6,
+        "isMandatory": true
+      }
+    ],
+    "commands": {
+      "accountDiscovery": {
+        "id": "3945e46e-39e2-4872-80b9-30fe8f6a77fc",
+        "isActive": true,
+        "parameters": [
+          {
+            "name": "TenantID",
+            "propertyId": "f8c6aa95-0afa-4f65-97f3-d6d0bb37b801"
+          },
+          {
+            "name": "ApplicationID",
+            "propertyId": "c7e1e64e-e2b3-4cc6-ae4e-1807be879378"
+          },
+          {
+            "name": "Password",
+            "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
+          },
+          {
+            "name": "KeyVaultName",
+            "propertyId": "65001f49-e792-4e01-992f-5a4982e38ec0"
+          }
+        ],
+        "command": "[CmdletBinding()]\nParam (\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$TenantID,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$ApplicationID,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$Password,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$KeyVaultName\n)\n\n[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12\n\nIf ((Get-ExecutionPolicy) -NE 'RemoteSigned' -Or (Get-ExecutionPolicy) -NE 'Unrestricted') {\n  Set-ExecutionPolicy 'RemoteSigned' -Scope 'Process'\n}\n\n$ModulesToImport = @{\n  'Az.Accounts' = '2.10.3'\n  'Az.KeyVault' = '4.9.0'\n}\n\n# If your minimum version is older, run Update-Module -Name 'Az'\n$ModulesToImport.GetEnumerator() | ForEach-Object {\n  Try {\n    Import-Module -Name $PSItem.Key -MinimumVersion $PSItem.Value -ErrorAction 'Stop'\n  } Catch {\n    Write-Error (\"Failed to Import Module: {0}\" -F $Error[0].Exception.ToString())\n    Exit\n  }\n}\n\n\n$Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $ApplicationID, $Password\n\nTry {\n  $Account = Connect-AzAccount -ServicePrincipal -TenantId $TenantId -Credential $Credential -ErrorAction 'Stop'\n} Catch {\n  Write-Error (\"Failed to Connect to Azure: {0}\" -F $Error[0].Exception.ToString())\n  Exit\n}\n\nTry {\n  $Vault = Get-AzKeyVault -VaultName $KeyVaultName -ErrorAction 'Stop'\n} Catch {\n  Write-Error (\"Failed to Retrieve Key Vault: {0}\" -F $Error[0].Exception.ToString())\n  Exit\n}\n\nIf ($Vault) {\n  Try {\n    $Secrets = $Vault | Get-AzKeyVaultSecret\n  } Catch {\n    Write-Error (\"Failed to Retrieve Secrets: {0}\" -F $Error[0].Exception.ToString())\n  }\n\n  If ($Secrets) {\n    $ParsedSecrets = $Secrets | ForEach-Object {\n      Try {\n        $Secret = $Vault | Get-AzKeyVaultSecret -Name $PSItem.Name -AsPlainText -ErrorAction 'Stop'\n      } Catch {\n        Write-Error (\"Failed to Retrieve Secret: {0}\" -F $Error[0].Exception.ToString())\n      }\n\n      If ($Secret) {\n        [PSCustomObject]@{\n          'ID'     = $PSItem.Id\n          'Name'   = $PSItem.Name\n          'Secret' = $Secret\n        }\n      } \n    }\n\n    Return $ParsedSecrets\n  } Else {\n    Write-Error \"No Secrets Found\"\n    Return $False\n  }\n} Else {\n  Return $False\n}",
+        "commandType": 2
+      },
+      "resetPassword": {
+        "id": "748474e8-af3f-4115-b021-aa445a005797",
+        "isActive": true,
+        "parameters": [
+          {
+            "name": "TenantID",
+            "propertyId": "f8c6aa95-0afa-4f65-97f3-d6d0bb37b801"
+          },
+          {
+            "name": "ApplicationID",
+            "propertyId": "c7e1e64e-e2b3-4cc6-ae4e-1807be879378"
+          },
+          {
+            "name": "Password",
+            "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
+          },
+          {
+            "name": "KeyVaultName",
+            "propertyId": "65001f49-e792-4e01-992f-5a4982e38ec0"
+          },
+          {
+            "name": "Name",
+            "source": 1,
+            "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73"
+          },
+          {
+            "name": "ID",
+            "source": 1,
+            "propertyId": "54b6d680-0b89-4ce6-a512-bc98e0008fd7"
+          }
+        ],
+        "command": "[CmdletBinding()]\nParam (\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$TenantID,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$ApplicationID,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$Password,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$KeyVaultName,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$Name,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$ID,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$NewPassword\n)\n\n[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12\n\nIf ((Get-ExecutionPolicy) -NE 'RemoteSigned' -Or (Get-ExecutionPolicy) -NE 'Unrestricted') {\n  Set-ExecutionPolicy 'RemoteSigned' -Scope 'Process'\n}\n\n$ModulesToImport = @{\n  'Az.Accounts' = '2.10.3'\n  'Az.KeyVault' = '4.9.0'\n}\n\n# If your minimum version is older, run Update-Module -Name 'Az'\n$ModulesToImport.GetEnumerator() | ForEach-Object {\n  Try {\n    Import-Module -Name $PSItem.Key -MinimumVersion $PSItem.Value -ErrorAction 'Stop'\n  } Catch {\n    Write-Error (\"Failed to Import Module: {0}\" -F $Error[0].Exception.ToString())\n    Exit\n  }\n}\n\n$Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $ApplicationID, $Password\n\nTry {\n  $Account = Connect-AzAccount -ServicePrincipal -TenantId $TenantId -Credential $Credential -ErrorAction 'Stop'\n} Catch {\n  Write-Error (\"Failed to Connect to Azure: {0}\" -F $Error[0].Exception.ToString())\n  Exit\n}\n\nTry {\n  $Vault = Get-AzKeyVault -VaultName $KeyVaultName -ErrorAction 'Stop'\n} Catch {\n  Write-Error (\"Failed to Retrieve Key Vault: {0}\" -F $Error[0].Exception.ToString())\n  Exit\n}\n\nIf ($Vault) {\n  Try {\n    $RetrievedSecret = $Vault | Get-AzKeyVaultSecret -Name $Name -ErrorAction 'Stop'\n  } Catch {\n    Write-Error (\"Failed to Retrieve Secrets: {0}\" -F $Error[0].Exception.ToString())\n  }\n\n  If ($RetrievedSecret) {\n    Try {\n      $Result = Set-AzKeyVaultSecret -Vault $Vault.VaultName -Name $RetrievedSecret.Name -SecretValue $NewPassword -ErrorAction 'Stop'\n    } Catch {\n      Write-Error \"Failed to retrieve password: $($Error[0].Exception.ToString())\"\n    }\n\n    If ($Result) {\n      Return $True\n    } Else {\n      Write-Error \"Failed to Update Secret\"\n    }\n  } Else {\n    Write-Error \"Failed to find secrets by name\"\n  }\n}"
+      },
+      "heartbeat": {
+        "id": "4b26b7a8-65bd-4a81-9702-c465481d07a9",
+        "isActive": true,
+        "parameters": [
+          {
+            "name": "TenantID",
+            "propertyId": "f8c6aa95-0afa-4f65-97f3-d6d0bb37b801"
+          },
+          {
+            "name": "ApplicationID",
+            "propertyId": "c7e1e64e-e2b3-4cc6-ae4e-1807be879378"
+          },
+          {
+            "name": "Password",
+            "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
+          },
+          {
+            "name": "KeyVaultName",
+            "propertyId": "65001f49-e792-4e01-992f-5a4982e38ec0"
+          },
+          {
+            "name": "Name",
+            "source": 1,
+            "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73"
+          },
+          {
+            "name": "Secret",
+            "source": 1,
+            "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
+          },
+          {
+            "name": "ID",
+            "source": 1,
+            "propertyId": "54b6d680-0b89-4ce6-a512-bc98e0008fd7"
+          }
+        ],
+        "command": "[CmdletBinding()]\nParam (\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$TenantID,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$ApplicationID,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$Password,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$KeyVaultName,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$Name,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$Secret,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$ID\n)\n\n[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12\n\nIf ((Get-ExecutionPolicy) -NE 'RemoteSigned' -Or (Get-ExecutionPolicy) -NE 'Unrestricted') {\n  Set-ExecutionPolicy 'RemoteSigned' -Scope 'Process'\n}\n\n$ModulesToImport = @{\n  'Az.Accounts' = '2.10.3'\n  'Az.KeyVault' = '4.9.0'\n}\n\n\n# If your minimum version is older, run Update-Module -Name 'Az'\n$ModulesToImport.GetEnumerator() | ForEach-Object {\n  Try {\n    $Account = Import-Module -Name $PSItem.Key -MinimumVersion $PSItem.Value -ErrorAction 'Stop'\n  } Catch {\n    Write-Error (\"Failed to Import Module: {0}\" -F $Error[0].Exception.ToString())\n    Exit\n  }\n}\n\nIf (-Not [Bool](Get-AzAccessToken -ErrorAction 'SilentlyContinue')) {\n  $Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $ApplicationID, $Password\n\n  Try {\n    Connect-AzAccount -ServicePrincipal -TenantId $TenantId -Credential $Credential -ErrorAction 'Stop'\n  } Catch {\n    Write-Error (\"Failed to Connect to Azure: {0}\" -F $Error[0].Exception.ToString())\n    Exit\n  }\n}\n\nTry {\n  $Vault = Get-AzKeyVault -VaultName $KeyVaultName -ErrorAction 'Stop'\n} Catch {\n  Write-Error (\"Failed to Retrieve Key Vault: {0}\" -F $Error[0].Exception.ToString())\n  Exit\n}\n\nIf ($Vault) {\n  Try {\n    $RetrievedSecret = $Vault | Get-AzKeyVaultSecret -Name $Name -ErrorAction 'Stop'\n  } Catch {\n    Write-Error (\"Failed to Retrieve Secrets: {0}\" -F $Error[0].Exception.ToString())\n  }\n  If ($RetrievedSecret) {\n    Try {\n      $SecretPassword = $Vault | Get-AzKeyVaultSecret -Name $RetrievedSecret.Name -AsPlainText -ErrorAction 'Stop'\n    } Catch {\n      Write-Error \"Failed to retrieve password: $($Error[0].Exception.ToString())\"\n    }\n    If ($SecretPassword) {\n      # Use the System.Net.NetworkCredential class as ConvertFrom-SecureString -AsPlainText does not work on Windows PowerShell 5.1\n      If ($SecretPassword -EQ ([System.Net.NetworkCredential]::New(\"\", $Secret).Password)) {\n        Return $True\n      } Else {\n        Write-Error \"Password Does Not Match\"\n      }\n    } Else {\n      Write-Error \"No Password Value Returned\"\n    }\n  } Else {\n    Write-Error \"Failed to find secrets by name\"\n  }\n}",
+        "commandType": 1
+      }
+    }
+  }
+}
