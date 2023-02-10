@@ -23,14 +23,14 @@ We then determine the fields that the accounts and providers will implement.
 
 Types are:
 
--   Username (string)  
--   Password (string)   
--   Description (string)   
--   UniqueIdentifier (string)  
--   String  
--   Int  
--   Bool  
--   Sensitive Data (SecureString)
+-   **Username** - Use as username when linking to an account (Ex : RDP)
+-   **Password**(SecureString)  - Use as password when linking to an account (Ex : RDP)
+-   **Description** - For account discovery  
+-   **UniqueIdentifier**(String) - Used to determine account uniqueness
+-   **String**  
+-   **Int**
+-   **Bool** 
+-   **Sensitive Data**(SecureString) - Information that necessitate elevated right to be read or update
 
 The **Mandatory** field is used to determine if the fields will be required for creation/edition.
 
