@@ -4,7 +4,7 @@
     "id": "6e2aa14f-aef0-48ce-8a47-606f82d65bc3",
     "name": "Azure Key Vault",
     "description": "",
-    "imageName": "SampleLetterABlue",
+    "imageName": "SampleAzureKeyVaultBlue",
     "providerProperties": [
       {
         "id": "f8c6aa95-0afa-4f65-97f3-d6d0bb37b801",

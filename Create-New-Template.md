@@ -1,6 +1,6 @@
 
-The Template Providers page can be found in the Providers page.
-*Administration/PrivilegedAccess/Provider/ProviderTemplate*
+The AnyIdentity Templates page can be found in the Providers page.
+*Administration/PrivilegedAccess/Provider/AnyIdentityTemplates*
 
 ![alt text](./Images/6b59fb3e-9b89-4b76-887b-fe769598462c.png)
 
