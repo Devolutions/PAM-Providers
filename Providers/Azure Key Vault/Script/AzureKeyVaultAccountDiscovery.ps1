@@ -71,8 +71,7 @@ If ($Vault) {
     Return $ParsedSecrets
   } Else {
     Write-Error "No Secrets Found"
-    Return $False
   }
 } Else {
-  Return $False
+  Write-Error "Key Vault not Found"
 }
