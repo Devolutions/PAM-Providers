@@ -31,7 +31,7 @@ There are several options available to you to utilize this functionality:
 - If you have a specific script in mind and are familiar with PowerShell, you can create your own template and then create propagation configurations using it.
 
 Follow the instructions below that match your needs:
-- Download and import a template. (Coming soon)
+- [Download and import Devolutions provided template](./Download-and-import.md)
 - [Create a template](./Create-A-Template.md) (for advanced users).
 - [Configure propagation based on a template](./Configure-Propagation.md) (either downloaded or manually created).
 - [Use a configuration](./Use-A-Configuration.md)
