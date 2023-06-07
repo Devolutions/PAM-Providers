@@ -5,7 +5,7 @@
 - Go to the folder [Propagation-Scripts/templates](./templates)
 - Get the template corresponding to your needs
 
-As much as possible, you should find specific assistance for each of the available templates referenced on the template help page.
+You will find specific assistance for each of the available templates referenced on the template help page.
 
 ## Importing a template file
 
