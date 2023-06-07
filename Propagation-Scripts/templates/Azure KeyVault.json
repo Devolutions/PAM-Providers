@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "template": {
+    "id": "b444aea6-7c24-401d-8fc8-e5e6c88670fd",
+    "name": "Azure KeyVault - Propagate new password",
+    "description": "Propagate your privileged account rotated password with the corresponding Azure KeyVault Secret.",
+    "imageName": "SampleAzureKeyVaultBlue",
+    "command": "[CmdletBinding()]\nParam (\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$TenantID,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$ApplicationID,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$Password,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$KeyVaultName,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$Name,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$NewPassword\n)\n\n[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12\n\nIf ((Get-ExecutionPolicy) -NE 'RemoteSigned' -Or (Get-ExecutionPolicy) -NE 'Unrestricted') {\n  Set-ExecutionPolicy 'RemoteSigned' -Scope 'Process'\n}\n\n$ModulesToImport = @{\n  'Az.Accounts' = '2.10.3'\n  'Az.KeyVault' = '4.9.0'\n}\n\n# If your minimum version is older, run Update-Module -Name 'Az'\n$ModulesToImport.GetEnumerator() | ForEach-Object {\n  Try {\n    Import-Module -Name $PSItem.Key -MinimumVersion $PSItem.Value -ErrorAction 'Stop'\n  } Catch {\n    Write-Error (\"Failed to Import Module: {0}\" -F $Error[0].Exception.ToString())\n    Exit\n  }\n}\n\n$Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $ApplicationID, $Password\n\nTry {\n  $Account = Connect-AzAccount -ServicePrincipal -TenantId $TenantId -Credential $Credential -ErrorAction 'Stop'\n} Catch {\n  Write-Error (\"Failed to Connect to Azure: {0}\" -F $Error[0].Exception.ToString())\n  Exit\n}\n\nTry {\n  $Vault = Get-AzKeyVault -VaultName $KeyVaultName -ErrorAction 'Stop'\n} Catch {\n  Write-Error (\"Failed to Retrieve Key Vault: {0}\" -F $Error[0].Exception.ToString())\n  Exit\n}\n\nIf ($Vault) {\n  Try {\n    $RetrievedSecret = $Vault | Get-AzKeyVaultSecret -Name $Name -ErrorAction 'Stop'\n  } Catch {\n    Write-Error (\"Failed to Retrieve Secrets: {0}\" -F $Error[0].Exception.ToString())\n  }\n\n  If ($RetrievedSecret) {\n    Try {\n      $Result = Set-AzKeyVaultSecret -Vault $Vault.VaultName -Name $RetrievedSecret.Name -SecretValue $NewPassword -ErrorAction 'Stop'\n    } Catch {\n      Write-Error \"Failed to retrieve password: $($Error[0].Exception.ToString())\"\n    }\n\n    If ($Result) {\n      Return $True\n    } Else {\n      Write-Error \"Failed to Update Secret\"\n    }\n  } Else {\n    Write-Error \"Failed to find secrets by name\"\n  }\n}",
+    "configurationProperties": [
+      {
+        "id": "bbf21554-f9bc-4684-a04b-38df236921fb",
+        "name": "TenantID",
+        "isMandatory": true
+      },
+      {
+        "id": "23c390d0-ae63-4e24-b333-365b24b88706",
+        "name": "ApplicationID",
+        "isMandatory": true
+      },
+      {
+        "id": "a264f3a2-4b44-4b4e-bc76-3a52dc803875",
+        "name": "Password",
+        "type": 5,
+        "isMandatory": true
+      },
+      {
+        "id": "674506f7-70c2-4951-b0e1-294361d35d87",
+        "name": "KeyVaultName",
+        "isMandatory": true
+      }
+    ],
+    "executionProperties": [
+      {
+        "id": "982c91a2-cda4-4780-870c-0bf90f0d2428",
+        "name": "Name",
+        "type": 8,
+        "isMandatory": true
+      }
+    ]
+  }
+}
