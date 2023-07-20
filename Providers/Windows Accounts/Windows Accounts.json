@@ -1,0 +1,138 @@
+{
+  "version": 1,
+  "template": {
+    "id": "0eaa6fc9-a352-4c96-9987-40a37926ccb1",
+    "name": "Windows Accounts",
+    "description": "",
+    "imageName": "SampleWindowsGrey",
+    "providerProperties": [
+      {
+        "id": "c24049c5-9ec4-4f26-832c-86f283067c73",
+        "name": "Username",
+        "type": 4,
+        "isMandatory": true
+      },
+      {
+        "id": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
+        "name": "Password",
+        "type": 3,
+        "isMandatory": true
+      },
+      {
+        "id": "3f35f48e-de2d-4f87-9e1d-c45beb25fb6d",
+        "name": "Description",
+        "type": 7
+      },
+      {
+        "id": "26bd85da-c7ed-447a-ae92-cfd21ebd4bdc",
+        "name": "Hosts",
+        "isMandatory": true
+      }
+    ],
+    "accountProperties": [
+      {
+        "id": "c24049c5-9ec4-4f26-832c-86f283067c73",
+        "name": "Username",
+        "type": 4,
+        "isMandatory": true
+      },
+      {
+        "id": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
+        "name": "Password",
+        "type": 3,
+        "isMandatory": true
+      },
+      {
+        "id": "0294dfac-43c0-4dfb-8fc3-d9e7170e7bda",
+        "name": "Hostname",
+        "isMandatory": true
+      },
+      {
+        "id": "54b6d680-0b89-4ce6-a512-bc98e0008fd7",
+        "name": "Hostname/SID",
+        "type": 6,
+        "isMandatory": true
+      },
+      {
+        "id": "832e2e28-673a-4fe2-884f-ea2ec8930b30",
+        "name": "SID",
+        "isMandatory": true
+      },
+      {
+        "id": "b009b031-0500-4579-ba50-112cb9aef41c",
+        "name": "Description",
+        "isMandatory": true
+      }
+    ],
+    "commands": {
+      "accountDiscovery": {
+        "id": "84a02e47-c8a3-4be1-973d-3dbfe22a5bb0",
+        "isActive": true,
+        "parameters": [
+          {
+            "name": "Hosts",
+            "propertyId": "26bd85da-c7ed-447a-ae92-cfd21ebd4bdc"
+          },
+          {
+            "name": "LoginUsername",
+            "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73"
+          },
+          {
+            "name": "LoginPassword",
+            "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
+          }
+        ],
+        "command": "[CmdletBinding()]\n       Param (\n         [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$Hosts,\n         [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$LoginUsername,\n         [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$LoginPassword\n       )\n\n$ScriptBlock = {\n\tParam ($Hostname)\n    \n\tTry {\n\t\t$LocalAccounts = Get-CIMInstance -ClassName 'Win32_UserAccount' -Filter \"LocalAccount='True'\" -ErrorAction 'Stop'\n\t  \n\t\t$Accounts = $LocalAccounts | ForEach-Object {\n\t\t\t[PSCustomObject]@{\n\t\t\t\t'Username'   = $_.Name\n\t\t\t\t'Password'   = \"password\"\n\t\t\t\t'HostName' = $Hostname\n\t\t\t\t'Hostname/SID'     =  $Hostname + \"/\" + $_.SId\n\t\t\t\t'SID'    =  $_.SId\n\t\t\t\t'Description' = $_.Description\n\t\t\t}\n\t\t}\n\t\tWrite-Output $Accounts\n\t}\n\tCatch {\n\t\tWrite-Error \"LocalAccount failed to be retrieved on host $Hostname\"\n\t}\n    \n}\n\nTry {\n\t$HostsArray = $Hosts -split \"[ ,;]\"\n\t$Credential = New-Object System.Management.Automation.PSCredential @($LoginUsername, $LoginPassword)\n\t\t\n\t$HostAccounts = $HostsArray | ForEach-Object {\n\t\t$Hostname = $_.Trim(); \n\n\t\tif ($Hostname -eq $null -or $Hostname -eq \"\") {\n\t\t\treturn\n\t\t}\n\n\t\treturn Invoke-Command -ComputerName $Hostname -Credential $Credential -ArgumentList @($Hostname) -ScriptBlock $ScriptBlock -ErrorAction 'Stop'\n\t}\n\n\treturn $HostAccounts\n} \ncatch\n{\n    Write-Error $error[0].Exception.ToString()\n}\n\n",
+        "commandType": 2
+      },
+      "resetPassword": {
+        "id": "02ea267d-1104-435b-b019-5208cc95c45d",
+        "isActive": true,
+        "parameters": [
+          {
+            "name": "HostName",
+            "source": 1,
+            "propertyId": "0294dfac-43c0-4dfb-8fc3-d9e7170e7bda"
+          },
+          {
+            "name": "UserName",
+            "source": 1,
+            "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73"
+          },
+          {
+            "name": "LoginUsername",
+            "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73"
+          },
+          {
+            "name": "LoginPassword",
+            "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
+          }
+        ],
+        "command": "[CmdletBinding()]\nParam (\n\t[Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$HostName,\n\t[Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$UserName,\n\t[Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$NewPassword,\n\t[Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$LoginUsername,\n\t[Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$LoginPassword,\n\t[Switch]$DebugOutput\n)\n\n$ScriptBlock = {\n    Param ($UserNameParam, $NewPasswordParam)\n\tIf ($DebugOutput) {\n\t\tWrite-Verbose (\"[Debug] Retrieving Local User, '{0}'\" -F $UserNameParam) -Verbose:$True\n\t}\n\n\t# Microsoft.PowerShell.LocalAccounts module not available in 32-bit PowerShell on 64-bit systems.\n\tTry {\n\t\t$User = Get-LocalUser -Name $UserNameParam -ErrorAction 'Stop' -Verbose:$DebugOutput\n\t} Catch {\n\t\tWrite-Error \"Username Does Not Exist\"\n\t\tExit\n\t}\n\n\tIf ($User) {\n\t\tIf ($DebugOutput) {\n\t\t\tWrite-Verbose (\"[Debug] User, '{0}' has the status of '{1}' and description of, '{2}'\" -F $User.Name, $User.Enabled, $User.Description) -Verbose:$True\n\t\t}\n\n\t\tTry {\n\t\t\tIf ($DebugOutput) {\n\t\t\t\tWrite-Verbose (\"[Debug] Attempting Password Change of, '{0}'\" -F $User.Name) -Verbose:$True\n\t\t\t}\n\n\t\t\t$User | Set-LocalUser -Password $NewPasswordParam -ErrorAction 'Stop' -Verbose:$DebugOutput\n\t\t} Catch {\n\t\t\tWrite-Error (\"Failed To Set Password: {0}\" -F $Error[0].Exception.ToString())\n\t\t\tExit\n\t\t}\n\n\t\tWrite-Output \"Success\"\n\t} Else {\n\t\tWrite-Error \"Unknown User Error\"\n\t}\n}\n\n\nTry {\n    $Credential = New-Object System.Management.Automation.PSCredential @($LoginUsername, $LoginPassword)\n    $PSSession = New-PSSession $HostName -Credential $Credential\n\n\t$Results = Invoke-Command -Session $PSSession -ArgumentList @($UserName, $NewPassword) -ScriptBlock $ScriptBlock -ErrorAction 'Stop'\n\n    $PSSession | Remove-PSSession\n} Catch {\n\tSwitch -Wildcard ($Error[0].Exception.ToString().ToLower()) {\n\t\t\"*The user name or password is incorrect*\" {\n\t\t\t\tWrite-Error (\"Failed to connect to the Host '{0}' to reset the password for the account '{1}'. Please check the Privileged Account Credentials provided are correct.\" -F $HostName, $UserName)\n\t\t\t\tBreak\n\t\t}\n\t\t\"*cannot bind argument to parameter*\" {\n\t\t\tWrite-Error (\"Failed to reset the local password for account '{0}' on Host '{1}' as it appears you may not have associated a Privileged Account Credential with the Password Reset script.\" -F $UserName, $HostName)\n\t\t\tBreak\n\t\t}\n\t\t# Add other wildcard matches here as required\n\t\tDefault {\n\t\t\tWrite-Error (\"Failed to reset the local Windows password for account '{0}' on Host '{1}'. Error = {2}\" -F $UserName, $HostName, $Error[0].Exception)\n\t\t\tBreak\n\t\t}\n\t}\n}\n\nIf ($Results -EQ \"Success\") {\n\tWrite-Output \"Success\"\n} Else {\n\tSwitch -Wildcard ($Results.ToString().ToLower()) {\n\t\t\"*WinRM cannot complete the operation*\" {\n\t\t\t\tWrite-Error (\"Failed to reset the local Windows password for account '{0}' on Host '{1} as it appears the Host is not online, or PowerShell Remoting is not enabled.\" -F $UserName, $HostName)\n\t\t\t\tBreak\n\t\t}\n\t\t\"*WS-Management service running*\" {\n\t\t\tWrite-Error (\"Failed to reset the local Windows password for account '{0}' on Host '{1}' as it appears the Host is not online, or PowerShell Remoting is not enabled.\" -F $UserName, $HostName)\n\t\t\tBreak\n\t\t}\n\t\t\"*cannot find the computer*\" {\n\t\t\tWrite-Error (\"Failed to reset the local Windows password for account '{0}' on Host '{1}' as it appears the Host is not online, or PowerShell Remoting is not enabled.\" -F $UserName, $HostName)\n\t\t\tBreak\n\t\t}\n\t\t\"*no logon servers available*\" {\n\t\t\tWrite-Error (\"Failed to reset the local Windows password for account '{0}' on Host '{1}'. There are currently no logon servers available to service the logon request.\" -F $UserName, $HostName)\n\t\t\tBreak\n\t\t}\n\t\t\"*currently locked*\" {\n\t\t\tWrite-Error (\"Failed to reset the local password for account '{0}' on Host '{1}'. The referenced account is currently locked out and may not be logged on to.\" -F $UserName, $HostName)\n\t\t\tBreak\n\t\t}\n\t\t\"*user name or password is incorrect*\" {\n\t\t\tWrite-Error (\"Failed to reset the local password for account '{0}' on Host '{1}' as the Privileged Account password appears to be incorrect, or the account is currently locked.\" -F $UserName, $HostName)\n\t\t\tBreak\n\t\t}\n\t\t\"*username does not exist*\" {\n\t\t\tWrite-Error (\"Failed to reset the local password for account '{0}' on Host '{1}' as the UserName does not exist.\" -F $UserName, $HostName)\n\t\t\tBreak\n\t\t}\n\t\t# Add other wildcard matches here as required\n\t\tDefault {\n\t\t\tWrite-Error (\"Failed to reset the local password for account '{0}' on Host '{1}'.Error = {2}.\" -F $UserName, $HostName, $Results)\n\t\t\tBreak\n\t\t}\n\t}\n}\n\n"
+      },
+      "heartbeat": {
+        "id": "17e126e3-1cc0-4b9a-9623-8b1b17478dc6",
+        "isActive": true,
+        "parameters": [
+          {
+            "name": "Username",
+            "source": 1,
+            "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73"
+          },
+          {
+            "name": "Password",
+            "source": 1,
+            "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
+          },
+          {
+            "name": "Hostname",
+            "source": 1,
+            "propertyId": "0294dfac-43c0-4dfb-8fc3-d9e7170e7bda"
+          }
+        ],
+        "command": "[CmdletBinding()]\nparam (\n    [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$Username,\n    [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$Password,\n    [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$Hostname\n)\ntry\n{\n    Add-Type -AssemblyName System.DirectoryServices.AccountManagement\n    $obj = New-Object System.DirectoryServices.AccountManagement.PrincipalContext('machine',$Hostname)\n\n    $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)\n    $UnsecurePassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)\n\n    $result = $obj.ValidateCredentials($Username, $UnsecurePassword)\n    Write-Output $result\n}\ncatch\n{\n    Write-Error $error[0].Exception.ToString()\n}",
+        "commandType": 1
+      }
+    }
+  }
+}
