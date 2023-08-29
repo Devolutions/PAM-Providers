@@ -2,7 +2,7 @@
   "version": 1,
   "template": {
     "id": "0eaa6fc9-a352-4c96-9987-40a37926ccb1",
-    "name": "Windows Accounts",
+    "name": "Windows Local Accounts",
     "description": "",
     "imageName": "SampleWindowsGrey",
     "providerProperties": [
@@ -26,6 +26,12 @@
       {
         "id": "26bd85da-c7ed-447a-ae92-cfd21ebd4bdc",
         "name": "Hosts",
+        "isMandatory": true
+      },
+      {
+        "id": "e13fac46-afc4-40ee-bad3-9550674cbccf",
+        "name": "ExcludeDisabledAccountsInDiscovery",
+        "type": 2,
         "isMandatory": true
       }
     ],
@@ -60,8 +66,7 @@
       },
       {
         "id": "b009b031-0500-4579-ba50-112cb9aef41c",
-        "name": "Description",
-        "isMandatory": true
+        "name": "Description"
       }
     ],
     "commands": {
@@ -80,9 +85,13 @@
           {
             "name": "LoginPassword",
             "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
+          },
+          {
+            "name": "ExcludeDisabledAccountsInDiscovery",
+            "propertyId": "e13fac46-afc4-40ee-bad3-9550674cbccf"
           }
         ],
-        "command": "[CmdletBinding()]\n       Param (\n         [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$Hosts,\n         [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$LoginUsername,\n         [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$LoginPassword\n       )\n\n$ScriptBlock = {\n\tParam ($Hostname)\n    \n\tTry {\n\t\t$LocalAccounts = Get-CIMInstance -ClassName 'Win32_UserAccount' -Filter \"LocalAccount='True'\" -ErrorAction 'Stop'\n\t  \n\t\t$Accounts = $LocalAccounts | ForEach-Object {\n\t\t\t[PSCustomObject]@{\n\t\t\t\t'Username'   = $_.Name\n\t\t\t\t'Password'   = \"password\"\n\t\t\t\t'HostName' = $Hostname\n\t\t\t\t'Hostname/SID'     =  $Hostname + \"/\" + $_.SId\n\t\t\t\t'SID'    =  $_.SId\n\t\t\t\t'Description' = $_.Description\n\t\t\t}\n\t\t}\n\t\tWrite-Output $Accounts\n\t}\n\tCatch {\n\t\tWrite-Error \"LocalAccount failed to be retrieved on host $Hostname\"\n\t}\n    \n}\n\nTry {\n\t$HostsArray = $Hosts -split \"[ ,;]\"\n\t$Credential = New-Object System.Management.Automation.PSCredential @($LoginUsername, $LoginPassword)\n\t\t\n\t$HostAccounts = $HostsArray | ForEach-Object {\n\t\t$Hostname = $_.Trim(); \n\n\t\tif ($Hostname -eq $null -or $Hostname -eq \"\") {\n\t\t\treturn\n\t\t}\n\n\t\treturn Invoke-Command -ComputerName $Hostname -Credential $Credential -ArgumentList @($Hostname) -ScriptBlock $ScriptBlock -ErrorAction 'Stop'\n\t}\n\n\treturn $HostAccounts\n} \ncatch\n{\n    Write-Error $error[0].Exception.ToString()\n}\n\n",
+        "command": "[CmdletBinding()]\nParam (\n\t[Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$Hosts,\n\t[Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$LoginUsername,\n\t[Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$LoginPassword,\n\t[Parameter(Mandatory = $False)][Boolean]$ExcludeDisabledAccountsInDiscovery\n)\n\n$ScriptBlock = {\n\tParam ($Hostname,$ExcludeDisabled)\n\tTry\n\t{\n\t\t\n\t\tIf ($ExcludeDisabled)\n\t\t{\n\t\t\t$LocalAccounts = Get-LocalUser | Where-Object {$_.Enabled -eq $true} -ErrorAction 'Stop'\n\t\t}\n\t\tElse\n\t\t{\n\t\t\t$LocalAccounts = Get-LocalUser -ErrorAction 'Stop'\n\t\t}\n\t\t\n\t\t$Accounts = $LocalAccounts | ForEach-Object {\n\t\t\t[PSCustomObject]@{\n\t\t\t\t'Username' = $_.Name\n\t\t\t\t'Password' = \"password\"\n\t\t\t\t'HostName' = $Hostname\n\t\t\t\t'Hostname/SID' = $Hostname + \"/\" + $_.SId\n\t\t\t\t'SID'\t   = $_.SId\n\t\t\t\t'Description' = $_.Description\n\t\t\t}\n\t\t}\n\t\tWrite-Output $Accounts\n\t}\n\tCatch\n\t{\n\t\tWrite-Error \"LocalAccount failed to be retrieved on host $Hostname\"\n\t}\n}\n\nTry\n{\n\t$HostsArray = $Hosts -split \"[ ,;]\"\n\t$Credential = New-Object System.Management.Automation.PSCredential @($LoginUsername, $LoginPassword)\n\t\n\t$HostAccounts = $HostsArray | ForEach-Object {\n\t\t$Hostname = $_.Trim();\n\t\t\n\t\tif ($Hostname -eq $null -or $Hostname -eq \"\")\n\t\t{\n\t\t\treturn\n\t\t}\n\t\t\n\t\treturn Invoke-Command -ComputerName $Hostname -Credential $Credential -ArgumentList @($Hostname, $ExcludeDisabledAccountsInDiscovery) -ScriptBlock $ScriptBlock -ErrorAction 'Stop'\n\t}\n\t\n\treturn $HostAccounts\n}\ncatch\n{\n\tWrite-Error $error[0].Exception.ToString()\n}\n\n",
         "commandType": 2
       },
       "resetPassword": {
@@ -128,9 +137,17 @@
             "name": "Hostname",
             "source": 1,
             "propertyId": "0294dfac-43c0-4dfb-8fc3-d9e7170e7bda"
+          },
+          {
+            "name": "LoginUsername",
+            "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73"
+          },
+          {
+            "name": "LoginPassword",
+            "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
           }
         ],
-        "command": "[CmdletBinding()]\nparam (\n    [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$Username,\n    [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$Password,\n    [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$Hostname\n)\ntry\n{\n    Add-Type -AssemblyName System.DirectoryServices.AccountManagement\n    $obj = New-Object System.DirectoryServices.AccountManagement.PrincipalContext('machine',$Hostname)\n\n    $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)\n    $UnsecurePassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)\n\n    $result = $obj.ValidateCredentials($Username, $UnsecurePassword)\n    if($result -ne $True) {\n        Write-Error \"The username or password does not match the credential on the machine\";\n    }\n\n    Write-Output $result\n}\ncatch\n{\n    Write-Error $error[0].Exception.ToString()\n}",
+        "command": "[CmdletBinding()]\nparam (\n\t[Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$Username,\n\t[Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$Password,\n\t[Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$Hostname,\n\t[Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$LoginUsername,\n\t[Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$LoginPassword\n)\n\n$ScriptBlock = {\n\tparam (\n\t\t[Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$Username,\n\t\t[Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$Password\n\t)\n\tAdd-Type -AssemblyName System.DirectoryServices.AccountManagement\n\t#$obj = New-Object System.DirectoryServices.AccountManagement.PrincipalContext('machine',$Hostname)\n\t$ct = [System.DirectoryServices.AccountManagement.ContextType]::Machine, $env:computername\n\t$opt = [System.DirectoryServices.AccountManagement.ContextOptions]::SimpleBind\n\t$obj = New-Object System.DirectoryServices.AccountManagement.PrincipalContext -ArgumentList $ct\n\t$BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)\n\t$UnsecurePassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)\n\t\n\t$result = $obj.ValidateCredentials($Username, $UnsecurePassword)\n\tif ($result -ne $true)\n\t{\n\t\tWrite-Error \"The username or password does not match the credential on the machine\";\n\t}\n\t\n\tWrite-Output $result\n}\n\n\ntry\n{\n\t$Credential = New-Object System.Management.Automation.PSCredential @($LoginUsername, $LoginPassword)\n\t$PSSession = New-PSSession $HostName -Credential $Credential\n\t$Results = Invoke-Command -Session $PSSession -ArgumentList @($UserName, $Password) -ScriptBlock $ScriptBlock -ErrorAction 'Stop'\n\tWrite-Output $Results\n}\ncatch\n{\n\tWrite-Error $error[0].Exception.ToString()\n}",
         "commandType": 1
       }
     }
