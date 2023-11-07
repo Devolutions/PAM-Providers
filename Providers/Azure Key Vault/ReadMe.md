@@ -1,6 +1,6 @@
 ## Prerequisites
 
-The following PowerShell Modules are required. These modules must be installed and accessible to the PowerShell installation on the system hosting the Devolutions Server (DVLS) installation. There is a 7.x version of PowerShell embedded within DVLS that must have access to the PowerShell modules, hence the need to install the modules for the entire system.
+The following PowerShell Modules are required. These modules must be installed and accessible to the PowerShell installation on the system hosting the Devolutions Server (DVLS) installation. There is a 5.x version of PowerShell embedded within DVLS that must have access to the PowerShell modules, hence the need to install the modules for the entire system.
 
 - **Az.Accounts** 2.10.3 or higher - `Install-Module -Name Az.Accounts -Scope AllUsers`
 - **Az.KeyVault** 4.9.0 or higher - `Install-Module -Name Az.KeyVault -Scope AllUsers`
