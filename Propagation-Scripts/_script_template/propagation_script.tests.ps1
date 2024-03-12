@@ -26,6 +26,10 @@ Describe '<service> propagation script' {
         Test-Path "$PSScriptRoot\<password propagation script name>..tests.ps1" | should -BeTrue
     }
     
+    It 'has the DVLS JSON export' {
+        Test-Path "$PSScriptRoot\template.json" | should -BeTrue
+    }
+    
     Context 'when...' {
     
         BeforeAll {
