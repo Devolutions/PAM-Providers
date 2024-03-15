@@ -14,6 +14,7 @@ param(
 
     [Parameter(Mandatory)]
     [ValidateNotNullOrEmpty()]
+    [ValidatePattern('^(?:(?:([^@\\]+)@|([^@\\]+)\\)?([^@\\]+))?$')]
     [string]$AccountUserName,
 
     [Parameter(Mandatory)]
@@ -24,7 +25,8 @@ param(
     [string]$ServiceName,
 
     [Parameter()]
-    [bool]$RestartService
+    [ValidateSet('yes','')]
+    [string]$RestartService
 )
 
 # Output the script parameters and the current user running the script
@@ -64,28 +66,51 @@ $scriptBlock = {
             StartPassword = decryptPassword($Password)
         }
     }
+
+    function GetUserUPN ($UserPattern) {
+    
+        # Extract username and domain from the input pattern
+        if ($UserPattern -match '^(.+)@(.+)$') {
+            $username = $Matches[1]
+            $domain = $Matches[2]
+        } elseif ($UserPattern -match '^(.+)\\(.+)$') {
+            $domain = $Matches[1]
+            $username = $Matches[2]
+        } else {
+            $username = $UserPattern
+            $domain = $null
+        }
+    
+        # If domain is not an FQDN or is missing, get the current domain using WMI
+        if (-not $domain -or $domain -notmatch '\.') {
+            $domain = (Get-CimInstance -Class Win32_ComputerSystem).Domain
+        }
+    
+        # Return the UPN
+        "$username@$domain"
+    }
     #endregion
 
     $ErrorActionPreference = 'Stop'
 
     ## Assigning to variables inside the scriptblock allows mocking of args with Pester
-    $username = $args[0]
+    $username = GetUserUPN($args[0])
     $pw = $args[1]
     $serviceNames = $args[2]
     $restartService = $args[3]
-
 
     if (-not $serviceNames) {
         $cimFilter = "StartName='$username'"
     } else {
         $cimFilter = "(Name='{0}') AND StartName='{1}'" -f ($serviceNames -join "' OR Name='"), $username
     }
+    $cimFilter = $cimFilter.replace('\', '\\')
 
     $serviceInstances = Get-CimInstance -ClassName Win32_Service -Filter $cimFilter
-    if (-not $serviceInstances) {
+    if ($serviceNames -and ($notFoundServices = $serviceNames.where({ $_ -notin @($serviceInstances).Name }))) {
+        Write-Output -InputObject ("The following services could not be found on host [{0}] running as [{1}]: {2}. Skipping these services." -f (hostname), $username, ($notFoundServices -join ','))
+    } elseif (-not $serviceInstances) {
         throw "No services found on [{0}] running as [{1}] could be found." -f (hostname), $username
-    } elseif ($serviceNames -and ($notFoundServices = $serviceNames.where({ $_ -notin $serviceInstances.Name }))) {
-        throw "The following services could not be found on host [{0}] running as [{1}]: {2}" -f (hostname), $username, ($notFoundServices -join ',')
     }
 
     $results = foreach ($servInst in $serviceInstances) {
@@ -94,7 +119,7 @@ $scriptBlock = {
             if ($updateResult.ReturnValue -ne 0) {
                 throw "Password update for service [{0}] failed with return value [{1}]" -f $servInst.Name, $updateResult.ReturnValue
             }
-            if ($restartService -and $servInst.State -eq 'Running') {
+            if ($restartService -eq 'yes' -and $servInst.State -eq 'Running') {
                 Restart-Service -Name $servInst.Name
             }
             $true
