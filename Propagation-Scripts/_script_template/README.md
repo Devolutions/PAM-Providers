@@ -16,12 +16,10 @@ Before using this script, ensure you meet the following prerequisites:
 - [Specify any permissions or roles required to execute the script.]
 - [Mention if there are any specific configurations or settings needed on the target system or service.]
 
+You can run the included `prerequisites.tests.ps1` script against the target server(s) with intended user credentials to ensure all prereqs are met.
+
 ## Properties
 
 | Property       | Description        | Mandatory | Example                |
 | ----------------------------------- | --------- | ---------------------- |
 | `PropertyName` | <description here> |    Yes    |  `"server.example.com"`|
-
-## Configuration
-
-[Provide instructions on how to configure the script before use. This might include setting environment variables, editing the script to include specific parameters, or any preliminary steps required to prepare the script for execution.]
