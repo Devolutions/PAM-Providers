@@ -1,17 +1,3 @@
-#requires -Modules @{ModuleName='Pester';ModuleVersion='5.0.0'}
-
-<#
-Usage (Pester v5+):
-
-$parameters = @{
-    
-}
-
-$container = New-PesterContainer -Path '<path>/<to>/prerequisites.tests.ps1' -Data $parameters
-Invoke-Pester -Container $container -Output Detailed
-
-#>
-
 param(
     [Parameter(Mandatory)]
     [ValidateNotNullOrEmpty()]
@@ -22,14 +8,32 @@ param(
     [pscredential]$EndpointCredential
 )
 
-describe 'prerequisites' {
-
-    it "the endpoint can be connected to via WinRM with the provided credential" {
-
-        Invoke-Command -ComputerName $Endpoint -Credential $EndpointCredential -ScriptBlock {1} | Should -Be 1
-
+[array]$tests = @(
+    @{
+        'Name'    = 'WinRM is available'
+        'Command' = { Invoke-Command -ComputerName $Endpoint -Credential $EndpointCredential -ScriptBlock { 1 } }
     }
+    @{
+        'Name' = 'User has admin privileges on target server'
+        'Command'                                    = {
+            Invoke-Command -ComputerName $Endpoint -Credential $EndpointCredential -ScriptBlock {
+                $currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+                $principal = New-Object System.Security.Principal.WindowsPrincipal($currentIdentity)
+                $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+            }
+        }
+    }
+)
 
-    ## add any other necessary prereqs here
+[array]$passedTests = foreach ($test in $tests) {
+    $result = & $test.Command
+    if (-not $result) {
+        Write-Error -Message "The test [$($_.Name)] failed."
+    } else {
+        1
+    }
+}
 
+if ($passedTests.Count -eq $tests.Count) {
+    Write-Host "All tests have passed. You're good to go!" -ForegroundColor Green
 }
