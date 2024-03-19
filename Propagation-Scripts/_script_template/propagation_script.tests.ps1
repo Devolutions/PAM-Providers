@@ -29,6 +29,11 @@ Describe '<service> propagation script' {
     It 'has the DVLS JSON export' {
         Test-Path "$PSScriptRoot\template.json" | should -BeTrue
     }
+
+    it 'does not save anything to disk' {
+        ## anything needed on disk like PowerShell modules and files need to be set up ahead of time
+        Set-ItResult -Inconclusive
+    }
     
     Context 'when...' {
     

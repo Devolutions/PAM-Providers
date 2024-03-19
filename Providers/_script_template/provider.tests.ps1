@@ -9,6 +9,11 @@ Describe 'provider' {
     It 'has a prerequisites test script' {
         Test-Path "$PSScriptRoot\<provider_name>.tests.ps1" | Should -BeTrue
     }
+
+    it 'does not save anything to disk' {
+        ## anything needed on disk like PowerShell modules and files need to be set up ahead of time
+        Set-ItResult -Inconclusive
+    }
 }
 
 Describe 'account discovery' {
@@ -46,6 +51,11 @@ Describe 'account discovery' {
     
             { & "$PSScriptRoot\script.ps1" @parameter_set } | Should -Throw '*.....*'
     
+        }
+
+        it 'does not save anything to disk' {
+            ## anything needed on disk like PowerShell modules and files need to be set up ahead of time
+            Set-ItResult -Inconclusive
         }
     
     }
@@ -86,6 +96,11 @@ Describe 'heartbeat' {
             { & "$PSScriptRoot\script.ps1" @parameter_set } | Should -Throw '*.....*'
     
         }
+
+        it 'does not save anything to disk' {
+            ## anything needed on disk like PowerShell modules and files need to be set up ahead of time
+            Set-ItResult -Inconclusive
+        }
     
     }
 }
@@ -125,6 +140,11 @@ Describe 'password rotation' {
     
             { & "$PSScriptRoot\script.ps1" @parameter_set } | Should -Throw '*.....*'
     
+        }
+
+        it 'does not save anything to disk' {
+            ## anything needed on disk like PowerShell modules and files need to be set up ahead of time
+            Set-ItResult -Inconclusive
         }
     
     }
