@@ -1,0 +1,51 @@
+{
+    "version": 1,
+    "template": {
+      "command": "[CmdletBinding()]\nparam(\n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [string]$Endpoint,\n    \n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [string]$EndpointUserName,\n\n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [securestring]$EndpointPassword,\n\n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [string]$OldIAMAccessKeyId,\n\n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [string]$NewIAMAccessKeyId,\n\n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [securestring]$NewPassword,\n\n    [Parameter()]\n    [string]$ProfileName,\n\n    [Parameter()]\n    [string]$CredentialsFilePath\n)\n\n# Output the script parameters and the current user running the script\nWrite-Output -InputObject “Running script with parameters: $($PSBoundParameters | Out-String) as [$(whoami)]”\n\n#region Functions\n# Function to create a new PSCredential object\nfunction newCredential([string]$UserName, [securestring]$Password) {\n    New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $UserName, $Password\n}\n#endregion\n\n# Create a new PSCredential object using the provided EndpointUserName and EndpointPassword\n$credential = newCredential $EndpointUserName $EndpointPassword\n\n# Define a script block to be executed remotely on the Windows server\n$scriptBlock = {\n\n    $ErrorActionPreference = 'Stop'\n\n    #region functions\n    function decryptPassword {\n        param(\n            [securestring]$Password\n        )\n        try {\n            $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)\n            [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)\n        } finally {\n            ## Clear the decrypted password from memory\n            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)\n        }\n    }\n\n    function Find-AWSCredentialFileProfile {\n        [CmdletBinding()]\n        param (\n            [Parameter()]\n            [ValidateScript({ Test-Path -Path $_ -PathType Leaf })]\n            [string[]]$CredentialsFilePath,\n\n            [Parameter()]\n            [ValidateNotNullOrEmpty()]\n            [string[]]$ProfileName\n        )\n\n        if ($PSBoundParameters.ContainsKey('CredentialsFilePath')) {\n            $credentialFiles = Get-ChildItem -Path $CredentialsFilePath\n        } else {\n            ## Look for credentials file across all user profiles\n            $profilesDirectory = (Get-ItemProperty -Path “HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList”).ProfilesDirectory\n            $profilesDirectory = [Environment]::ExpandEnvironmentVariables($profilesDirectory)\n\n            $credentialFiles = Get-ChildItem -Path $profilesDirectory -Recurse -Filter “credentials” -File -ErrorAction SilentlyContinue |\n            Where-Object { $_.Directory.Name -eq '.aws' }\n        }\n\n        foreach ($credFile in $credentialFiles) {\n    \n            $content = Get-Content -Path $credFile.FullName -Raw\n            $profiles = @() # Initialize an array to hold all profiles\n            $currentProfile = $null\n\n            foreach ($line in $content -split “\\r?\\n”) {\n                if ($line -match '^\\[([^]]+)\\]') {\n                    # Before resetting $currentProfile, add it to $profiles if it's not null\n                    if ($null -ne $currentProfile) {\n                        $profiles += [pscustomobject]$currentProfile\n                    }\n                    $currentProfile = [ordered]@{\n                        Name                = $matches[1] -replace '^profile\\s+', ''\n                        CredentialsFilePath = $credFile.FullName\n                    }\n                } elseif ($line -match '^(aws_access_key_id|aws_secret_access_key|aws_session_token)\\s*=\\s*(.*)') {\n                    if ($null -ne $currentProfile) {\n                        $currentProfile[$matches[1]] = $matches[2]\n                    }\n                }\n            }\n            # Add the last profile after exiting the loop\n            if ($null -ne $currentProfile) {\n                $profiles += [pscustomobject]$currentProfile\n            }\n\n            $profiles.where({ !$ProfileName -or $_.name -in $ProfileName })\n        }\n    }\n    \n    function Update-AWSCredentialsFileProfile {\n        [CmdletBinding()]\n        param (\n            [Parameter(Mandatory, ValueFromPipeline)]\n            [PSCustomObject]$AwsProfile,\n            [Parameter(Mandatory)]\n            [string]$NewAccessKeyID,\n            [Parameter(Mandatory)]\n            [string]$NewSecretAccessKey\n        )\n    \n        Process {\n            $content = Get-Content -Path $AwsProfile.CredentialsFilePath\n            $updatedContent = @()\n    \n            $insideProfile = $false\n            foreach ($line in $content) {\n                if ($line -match '^\\[' + [regex]::Escape($AwsProfile.name) + '\\]') {\n                    $insideProfile = $true\n                    $updatedContent += $line\n                } elseif ($line -match '^\\[') {\n                    $insideProfile = $false\n                    $updatedContent += $line\n                } elseif ($insideProfile) {\n                    if ($line -match '^aws_access_key_id\\s*=') {\n                        $updatedContent += “aws_access_key_id = $NewAccessKeyID”\n                    } elseif ($line -match '^aws_secret_access_key\\s*=') {\n                        $updatedContent += “aws_secret_access_key = $NewSecretAccessKey”\n                    } else {\n                        $updatedContent += $line\n                    }\n                } else {\n                    $updatedContent += $line\n                }\n            }\n            $updatedContent | Set-Content -Path $AwsProfile.CredentialsFilePath\n            Write-Verbose “Updated profile $($AwsProfile.name) in the credentials file.”\n        }\n    }\n    #endregion\n\n    $findCredFileParams = @{}\n    if ($args[3]) {\n        $findCredFileParams.CredentialsFilePath = $args[3]\n    }\n    if ($args[4]) {\n        $findCredFileParams.ProfileName = $args[4]\n    }\n\n    $foundCredentialFileProfiles = Find-AWSCredentialFileProfile @findCredFileParams\n \n    ## Must assign this arg it's own var because it's being used inside of the where filter where $args is a thing\n    $oldIAMAccessKeyId = $args[0]\n\n    $matchingCredentialFileProfiles = @($foundCredentialFileProfiles).where({ $_.aws_access_key_id -eq $oldIAMAccessKeyId })\n\n    $matchingCredentialFileProfiles | Update-AWSCredentialsFileProfile -NewAccessKeyID $args[1] -NewSecretAccessKey (decryptPassword($args[2]))\n}\n\nif ($PSBoundParameters.ContainsKey('ProfileName')) {\n    $profileNames = $ProfileName -split ','\n}\nif ($PSBoundParameters.ContainsKey('CredentialsFilePath')) {\n    $credentialsFilePaths = $CredentialsFilePath -split ','\n}\n\ntry {\n    $invParams = @{\n        ComputerName = $Endpoint\n        ScriptBlock  = $scriptBlock\n        Credential   = $credential\n        ArgumentList = $OldIAMAccessKeyId, $NewIAMAccessKeyId, $NewPassword, $credentialsFilePaths, $profileNames\n    }\n    Invoke-Command @invParams\n} catch [System.Management.Automation.Remoting.PSRemotingTransportException] {\n    throw \"Script is unable to connect to the remote computer [$Endpoint].\"\n}",
+      "configurationProperties": [
+        {
+          "id": "1c45c405-d1dc-42af-9e79-b64feaa8f782",
+          "isMandatory": true,
+          "name": "Endpoint"
+        },
+        {
+          "id": "74f08447-97a2-4681-90e3-84517ef1ad34",
+          "isMandatory": true,
+          "name": "EndpointUserName"
+        },
+        {
+          "id": "386db471-ec6d-4a65-884f-565991332d77",
+          "isMandatory": true,
+          "name": "EndpointPassword",
+          "type": 5
+        }
+      ],
+      "description": "Searches for existing IAM access key IDs in AWS credentials files and updates both the access key ID and secret access key associated with one or more profiles.",
+      "executionProperties": [
+        {
+          "id": "cac3fa13-a9dd-4142-b2c9-1a97d051ee19",
+          "isMandatory": true,
+          "name": "OldIAMAccessKeyId",
+          "type": 8
+        },
+        {
+          "id": "e0cb7f14-a22f-47ff-9892-fac826b41ba8",
+          "isMandatory": true,
+          "name": "NewIAMAccessKeyId"
+        },
+        {
+          "id": "1b3e0943-e54d-4e4c-aabb-786f8812667f",
+          "isMandatory": true,
+          "name": "ProfileName"
+        },
+        {
+          "id": "fa9cd0f6-cb49-42ca-acc0-ab4f2f25b851",
+          "isMandatory": true,
+          "name": "CredentialsFilePath"
+        }
+      ],
+      "id": "ac4ad7a3-2cf0-437b-9d04-a32a5de8979a",
+      "imageName": "",
+      "name": "AWS Credentials File"
+    }
+  }
