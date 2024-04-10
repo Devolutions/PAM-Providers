@@ -1,3 +1,47 @@
+<#
+.SYNOPSIS
+This script updates AWS IAM credentials in a credentials file on a remote endpoint.
+
+.DESCRIPTION
+The script updates the AWS IAM access key ID and secret access key for a specified profile within an AWS credentials file. 
+It supports updating credentials in a specific file or scanning multiple profiles across user profiles. 
+The script connects to a remote endpoint using provided credentials and executes the update process remotely.
+
+.PARAMETER Endpoint
+Specifies the endpoint (computer name or IP address) where the AWS credentials file resides.
+
+.PARAMETER EndpointUserName
+Specifies the user name to connect to the endpoint. This user must have the necessary permissions to access and modify the AWS credentials file.
+
+.PARAMETER EndpointPassword
+Specifies the password for the EndpointUserName in a secure string format.
+
+.PARAMETER OldIAMAccessKeyId
+Specifies the old IAM access key ID that will be replaced in the AWS credentials file.
+
+.PARAMETER NewIAMAccessKeyId
+Specifies the new IAM access key ID to update in the AWS credentials file.
+
+.PARAMETER NewPassword
+Specifies the new IAM secret access key in a secure string format.
+
+.PARAMETER ProfileName
+(Optional) Specifies the profile name(s) to update in the AWS credentials file. If omitted, all profiles with the OldIAMAccessKeyId will be updated.
+
+.PARAMETER CredentialsFilePath
+(Optional) Specifies the path to the AWS credentials file to be updated. If omitted, the script will search for the credentials file in all user profiles.
+
+.EXAMPLE
+PS> .\script.ps1 -Endpoint "Server01" -EndpointUserName "admin" -EndpointPassword (ConvertTo-SecureString "password" -AsPlainText -Force) -OldIAMAccessKeyId "AKIAIOSFODNN7EXAMPLE" -NewIAMAccessKeyId "AKIAI44QH8DHBEXAMPLE" -NewPassword (ConvertTo-SecureString "newSecretAccessKey" -AsPlainText -Force)
+
+This example updates the AWS IAM credentials in the default location on the remote server "Server01" for all profiles matching the old access key ID.
+
+.EXAMPLE
+PS> .\script.ps1 -Endpoint "Server01" -EndpointUserName "admin" -EndpointPassword (ConvertTo-SecureString "password" -AsPlainText -Force) -OldIAMAccessKeyId "AKIAIOSFODNN7EXAMPLE" -NewIAMAccessKeyId "AKIAI44QH8DHBEXAMPLE" -NewPassword (ConvertTo-SecureString "newSecretAccessKey" -AsPlainText -Force) -ProfileName "default" -CredentialsFilePath "C:\Users\Admin\.aws\credentials"
+
+This example updates the AWS IAM credentials for the "default" profile in a specified credentials file on the remote server "Server01".
+#>
+
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
@@ -31,38 +75,40 @@ param(
     [string]$CredentialsFilePath
 )
 
-# Output the script parameters and the current user running the script
+# Outputs script parameters and the current user for logging purposes
 Write-Output -InputObject “Running script with parameters: $($PSBoundParameters | Out-String) as [$(whoami)]”
 
 #region Functions
-# Function to create a new PSCredential object
+# Creates a PSCredential object using provided username and password
 function newCredential([string]$UserName, [securestring]$Password) {
     New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $UserName, $Password
 }
 #endregion
 
-# Create a new PSCredential object using the provided EndpointUserName and EndpointPassword
+# Create credential object for remote connection
 $credential = newCredential $EndpointUserName $EndpointPassword
 
-# Define a script block to be executed remotely on the Windows server
+# Script block to execute on the remote server
 $scriptBlock = {
 
+    # Set error preference to stop to halt on errors
     $ErrorActionPreference = 'Stop'
 
     #region functions
+    # Decrypts a secure string password into a plain string
     function decryptPassword {
         param(
             [securestring]$Password
         )
         try {
             $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)
-            [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
+            return [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
         } finally {
-            ## Clear the decrypted password from memory
             [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
         }
     }
 
+    # Finds AWS credential profiles either in a specified file or default locations
     function Find-AWSCredentialFileProfile {
         [CmdletBinding()]
         param (
@@ -75,26 +121,24 @@ $scriptBlock = {
             [string[]]$ProfileName
         )
 
+        # Handle custom or default credentials file path
         if ($PSBoundParameters.ContainsKey('CredentialsFilePath')) {
             $credentialFiles = Get-ChildItem -Path $CredentialsFilePath
         } else {
-            ## Look for credentials file across all user profiles
-            $profilesDirectory = (Get-ItemProperty -Path “HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList”).ProfilesDirectory
-            $profilesDirectory = [Environment]::ExpandEnvironmentVariables($profilesDirectory)
-
+            $profilesDirectory = [Environment]::ExpandEnvironmentVariables((Get-ItemProperty -Path “HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList”).ProfilesDirectory)
             $credentialFiles = Get-ChildItem -Path $profilesDirectory -Recurse -Filter “credentials” -File -ErrorAction SilentlyContinue |
             Where-Object { $_.Directory.Name -eq '.aws' }
         }
 
+        # Process each found credentials file
         foreach ($credFile in $credentialFiles) {
-    
             $content = Get-Content -Path $credFile.FullName -Raw
-            $profiles = @() # Initialize an array to hold all profiles
+            $profiles = @()
             $currentProfile = $null
 
+            # Parse credentials file content
             foreach ($line in $content -split “\r?\n”) {
                 if ($line -match '^\[([^]]+)\]') {
-                    # Before resetting $currentProfile, add it to $profiles if it's not null
                     if ($null -ne $currentProfile) {
                         $profiles += [pscustomobject]$currentProfile
                     }
@@ -108,15 +152,16 @@ $scriptBlock = {
                     }
                 }
             }
-            # Add the last profile after exiting the loop
             if ($null -ne $currentProfile) {
                 $profiles += [pscustomobject]$currentProfile
             }
 
+            # Filter profiles by name if specified
             $profiles.where({ !$ProfileName -or $_.name -in $ProfileName })
         }
     }
     
+    # Updates AWS credentials file with new access and secret keys
     function Update-AWSCredentialsFileProfile {
         [CmdletBinding()]
         param (
@@ -131,8 +176,9 @@ $scriptBlock = {
         Process {
             $content = Get-Content -Path $AwsProfile.CredentialsFilePath
             $updatedContent = @()
-    
             $insideProfile = $false
+
+            # Iterate over file lines to update the specific profile
             foreach ($line in $content) {
                 if ($line -match '^\[' + [regex]::Escape($AwsProfile.name) + '\]') {
                     $insideProfile = $true
@@ -142,9 +188,9 @@ $scriptBlock = {
                     $updatedContent += $line
                 } elseif ($insideProfile) {
                     if ($line -match '^aws_access_key_id\s*=') {
-                        $updatedContent += “aws_access_key_id = $NewAccessKeyID”
+                        $updatedContent += "aws_access_key_id = $NewAccessKeyID"
                     } elseif ($line -match '^aws_secret_access_key\s*=') {
-                        $updatedContent += “aws_secret_access_key = $NewSecretAccessKey”
+                        $updatedContent += "aws_secret_access_key = $NewSecretAccessKey"
                     } else {
                         $updatedContent += $line
                     }
@@ -152,12 +198,16 @@ $scriptBlock = {
                     $updatedContent += $line
                 }
             }
+
+            # Write the updated content back to the credentials file
             $updatedContent | Set-Content -Path $AwsProfile.CredentialsFilePath
             Write-Verbose “Updated profile $($AwsProfile.name) in the credentials file.”
         }
     }
     #endregion
 
+    # Script block's main logic starts here...
+    # Define parameters for the Find-AWSCredentialFileProfile function
     $findCredFileParams = @{}
     if ($args[3]) {
         $findCredFileParams.CredentialsFilePath = $args[3]
@@ -166,16 +216,16 @@ $scriptBlock = {
         $findCredFileParams.ProfileName = $args[4]
     }
 
+    # Find profiles to update based on the old IAM Access Key ID
     $foundCredentialFileProfiles = Find-AWSCredentialFileProfile @findCredFileParams
- 
-    ## Must assign this arg it's own var because it's being used inside of the where filter where $args is a thing
     $oldIAMAccessKeyId = $args[0]
-
     $matchingCredentialFileProfiles = @($foundCredentialFileProfiles).where({ $_.aws_access_key_id -eq $oldIAMAccessKeyId })
 
+    # Update the found profiles with the new IAM Access Key ID and Secret Access Key
     $matchingCredentialFileProfiles | Update-AWSCredentialsFileProfile -NewAccessKeyID $args[1] -NewSecretAccessKey (decryptPassword($args[2]))
 }
 
+# Prepare the profile and credentials file paths if provided
 if ($PSBoundParameters.ContainsKey('ProfileName')) {
     $profileNames = $ProfileName -split ','
 }
@@ -183,6 +233,7 @@ if ($PSBoundParameters.ContainsKey('CredentialsFilePath')) {
     $credentialsFilePaths = $CredentialsFilePath -split ','
 }
 
+# Execute the script block on the remote computer using Invoke-Command
 try {
     $invParams = @{
         ComputerName = $Endpoint
@@ -192,5 +243,6 @@ try {
     }
     Invoke-Command @invParams
 } catch [System.Management.Automation.Remoting.PSRemotingTransportException] {
+    # Exception handling for connection issues
     throw "Script is unable to connect to the remote computer [$Endpoint]."
 }
