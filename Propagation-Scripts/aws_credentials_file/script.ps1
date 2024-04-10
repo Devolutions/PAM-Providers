@@ -152,7 +152,6 @@ $scriptBlock = {
                     $updatedContent += $line
                 }
             }
-    
             $updatedContent | Set-Content -Path $AwsProfile.CredentialsFilePath
             Write-Verbose “Updated profile $($AwsProfile.name) in the credentials file.”
         }
@@ -184,10 +183,14 @@ if ($PSBoundParameters.ContainsKey('CredentialsFilePath')) {
     $credentialsFilePaths = $CredentialsFilePath -split ','
 }
 
-$invParams = @{
-    ComputerName = $Endpoint
-    ScriptBlock  = $scriptBlock
-    Credential   = $credential
-    ArgumentList = $OldIAMAccessKeyId, $NewIAMAccessKeyId, $NewPassword, $credentialsFilePaths, $profileNames
+try {
+    $invParams = @{
+        ComputerName = $Endpoint
+        ScriptBlock  = $scriptBlock
+        Credential   = $credential
+        ArgumentList = $OldIAMAccessKeyId, $NewIAMAccessKeyId, $NewPassword, $credentialsFilePaths, $profileNames
+    }
+    Invoke-Command @invParams
+} catch [System.Management.Automation.Remoting.PSRemotingTransportException] {
+    throw "Script is unable to connect to the remote computer [$Endpoint]."
 }
-Invoke-Command @invParams
