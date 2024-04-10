@@ -5,7 +5,7 @@ Describe 'AWS Credentials file propagation script' {
         'Endpoint'          = 'iisserverhere'
         'EndpointPassword'  = (ConvertTo-SecureString -String 'eppasswordhere' -AsPlainText -Force)
         'NewPassword'       = (ConvertTo-SecureString -String 'newpasswordhere' -AsPlainText -Force)
-        'OldIAMAccessKeyId' = 'OldIAMAccessKeyIdhere'
+        'OldIAMAccessKeyId' = 'OldIAMAccessKeyIdHere'
         'NewIAMAccessKeyId' = 'NewIAMAccessKeyIdhere'
     }
 
@@ -107,128 +107,136 @@ Describe 'AWS Credentials file propagation script' {
             Mock Write-Output
     
             Mock Invoke-Command {
-
-                $ScriptBlock.InvokeWithContext(@{
-                        'Get-ChildItem'    = {
-                            [pscustomobject]@{
-                                Directory = [pscustomobject]@{
-                                    Name = '.aws'
-                                }
-                                FullName  = 'C:\Users\someuser\.aws\credentials'
+                
+                $sbToTest = {
+                    function script:Test-Path { $true }
+                    function script:Get-ChildItem {
+                        [pscustomobject]@{
+                            Directory = [pscustomobject]@{
+                                Name = '.aws'
                             }
+                            FullName  = 'C:\Users\someuser\.aws\credentials'
                         }
-                        'Get-ItemProperty' = { 'C:\Users' }
-                        'Set-Content'      = { Write-Output -InputObject 'changedafile' }
-                        'Get-Content'      = {
-                            '[default]
-                            aws_access_key_id = AKIAIOSFODNN7EXAMPLE
-                            aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+                    }
+                    function script:Get-ItemProperty { 'C:\Users' }
+                    function script:Set-Content { Add-Content -Path TestDrive:\updated.txt -Value '' }
+                    function script:Get-Content {
+                        '[default]
+aws_access_key_id = AKIAIOSFODNN7EXAMPLE
+aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 
-                            [other]
-                            aws_access_key_id = AKIAI44QH8DHBEXAMPLE
-                            aws_secret_access_key = je7MtGbClwBF/2Zp9Utk/h3yCo8nvbEXAMPLEKEY'
-                        }
-                    }, @())
+[other]
+aws_access_key_id = AKIAI44QH8DHBEXAMPLE
+aws_secret_access_key = je7MtGbClwBF/2Zp9Utk/h3yCo8nvbEXAMPLEKEY'
+                    }
+
+                    $ScriptBlock.Invoke($ArgumentList)
+                }
+
+                & $sbToTest
             }
         }
         
 
         It 'does not attempt to update any file : <_.label>' -ForEach $parameterSets {
-            & "$PSScriptRoot\script.ps1" @parameter_set | Should -Not -Be 'changedafile'
+            $null = & "$PSScriptRoot\script.ps1" @parameter_set
+            Test-Path TestDrive:\updated.txt | Should -BeFalse
         }
     }
 
-    # Context 'when no profiles are found that contain the required OldIAMAccessKeyId' {
+    Context 'when profiles are found that contain the required OldIAMAccessKeyId' {
 
-
-    #     BeforeAll {
-    #         Mock Write-Output
+        BeforeAll {
+            Mock Write-Output
     
-    #         Mock Invoke-Command {
-    #             $ScriptBlock.InvokeWithContext(@{
-    #                     'Get-ChildItem'    = {
-    #                         [pscustomobject]@{
-    #                             Directory = [pscustomobject]@{
-    #                                 Name = '.aws'
-    #                             }
-    #                             FullName  = 'C:\Users\someuser\.aws\credentials'
-    #                         }
-    #                     }
-    #                     'Get-ItemProperty' = { 'C:\Users' }
-    #                     'Set-Content'      = { Write-Output -InputObject 'changedafile' }
-    #                     'Get-Content'      = {
-    #                         '[default]
-    #                         aws_access_key_id = AKIAIOSFODNN7EXAMPLE
-    #                         aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+            Mock Invoke-Command {
+                
+                $sbToTest = {
+                    function script:Test-Path { $true }
+                    function script:Get-ChildItem {
+                        [pscustomobject]@{
+                            Directory = [pscustomobject]@{
+                                Name = '.aws'
+                            }
+                            FullName  = 'C:\Users\someuser\.aws\credentials'
+                        }
+                    }
+                    function script:Get-ItemProperty { 'C:\Users' }
+                    function script:Set-Content { Add-Content -Path TestDrive:\updated.txt -Value '' }
+                    function script:Get-Content {
+                        '[default]
+aws_access_key_id = OldIAMAccessKeyIdHere
+aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 
-    #                         [other]
-    #                         aws_access_key_id = AKIAI44QH8DHBEXAMPLE
-    #                         aws_secret_access_key = je7MtGbClwBF/2Zp9Utk/h3yCo8nvbEXAMPLEKEY'
-    #                     }
-    #                 }, @())
-    #         }
-    #     }
+[other]
+aws_access_key_id = AKIAI44QH8DHBEXAMPLE
+aws_secret_access_key = je7MtGbClwBF/2Zp9Utk/h3yCo8nvbEXAMPLEKEY'
+                    }
+
+                    $ScriptBlock.Invoke($ArgumentList)
+                }
+
+                & $sbToTest
+            }
+        }
         
 
-    #     It 'does not attempt to update any file : <_.label>' -ForEach $parameterSets {
-    #         & "$PSScriptRoot\script.ps1" @parameter_set | Should -Not -Be 'changedafile'
-    #     }
-    # }
+        It 'attempts to update a credentials file : <_.label>' -ForEach $parameterSets {
+            $null = & "$PSScriptRoot\script.ps1" @parameter_set
+            Test-Path TestDrive:\updated.txt | Should -BeTrue
+        }
+    }
 
-    # Context 'when the script does not have access to a credentials file' {
+    Context 'when the script does not have access to a credentials file' {
+
+        BeforeAll {
+            Mock Write-Output
+    
+            Mock Invoke-Command {
+                
+                $sbToTest = {
+                    function script:Test-Path { $true }
+                    function script:Get-ChildItem {
+                        throw [System.UnauthorizedAccessException]"Access to the path is denied."
+                    }
+                    function script:Get-ItemProperty { 'C:\Users' }
+                    function script:Set-Content { Add-Content -Path TestDrive:\updated.txt -Value '' }
+                    function script:Get-Content {
+                        '[default]
+aws_access_key_id = OldIAMAccessKeyIdHere
+aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+
+[other]
+aws_access_key_id = AKIAI44QH8DHBEXAMPLE
+aws_secret_access_key = je7MtGbClwBF/2Zp9Utk/h3yCo8nvbEXAMPLEKEY'
+                    }
+
+                    $ScriptBlock.Invoke($ArgumentList)
+                }
+
+                & $sbToTest
+            }
+        }
+
+        It 'throws an error : <_.label>' -ForEach $parameterSets {
+            { & "$PSScriptRoot\script.ps1" @parameter_set } | Should -Throw '*Access to the path*'
+        }
+
+    }
+
+    Context 'when the script cannot connect to the remote host' {
 
 
-    #     BeforeAll {
-    # mock Write-Output
-    #         Mock Invoke-Command {
-    #             $ScriptBlock.InvokeWithContext(@{
-    #                     'Import-Module' = {}
-    #                     'Get-ChildItem' = {}
-    #                 }, @())
-    #         }
-    #     }
+        BeforeAll {
+            Mock Write-Output
+            Mock Invoke-Command {
+                throw [System.Management.Automation.Remoting.PSRemotingTransportException]"Cannot connect to remote computer."
+            }
+        }
         
 
-    #     It 'returns nothing : <_.label>' -ForEach $parameterSets {
-    #         & "$PSScriptRoot\script.ps1" @parameter_set | should -BeNullOrEmpty
-    #     }
-    # }
-
-    # Context 'when a credentials file is not in the expected format' {
-
-
-    #     BeforeAll {
-    # mock Write-Output
-    #         Mock Invoke-Command {
-    #             $ScriptBlock.InvokeWithContext(@{
-    #                     'Import-Module' = {}
-    #                     'Get-ChildItem' = {}
-    #                 }, @())
-    #         }
-    #     }
-        
-
-    #     It 'returns nothing : <_.label>' -ForEach $parameterSets {
-    #         & "$PSScriptRoot\script.ps1" @parameter_set | should -BeNullOrEmpty
-    #     }
-    # }
-
-    # Context 'when the script cannot connect to the remote host' {
-
-
-    #     BeforeAll {
-    # mock Write-Output
-    #         Mock Invoke-Command {
-    #             $ScriptBlock.InvokeWithContext(@{
-    #                     'Import-Module' = {}
-    #                     'Get-ChildItem' = {}
-    #                 }, @())
-    #         }
-    #     }
-        
-
-    #     It 'returns nothing : <_.label>' -ForEach $parameterSets {
-    #         & "$PSScriptRoot\script.ps1" @parameter_set | should -BeNullOrEmpty
-    #     }
-    # }
+        It 'returns the expected error : <_.label>' -ForEach $parameterSets {
+            { & "$PSScriptRoot\script.ps1" @parameter_set } | Should -Throw '*unable to connect to the remote computer*'
+        }
+    }
 }
