@@ -64,11 +64,11 @@ You should see the *queryString* that the test script sent with both the *Creden
 
 > **Note:** The tutorial will send a Slack notification to a channel but, at this point, you're free to connect any integrated app you wish.
 
-![](image-6.png)
+![](setup_images/image-6.png)
 
 8. Fill in the placeholders where you'd like the credential and/or the message passed to the action.
 
-![](image-5.png)
+![](setup_images/image-5.png)
 
 9. Continue building the app as you wish.
 
