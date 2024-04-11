@@ -45,7 +45,6 @@ param(
     [securestring]$NewPassword,
 
     [Parameter()]
-    [ValidateNotNullOrEmpty()]
     [string]$Message
 )
 
