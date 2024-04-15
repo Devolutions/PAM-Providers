@@ -1,0 +1,154 @@
+{
+  "version": 1,
+  "template": {
+    "accountProperties": [
+      {
+        "id": "54b6d680-0b89-4ce6-a512-bc98e0008fd7",
+        "name": "ID",
+        "type": 6
+      },
+      {
+        "id": "c24049c5-9ec4-4f26-832c-86f283067c73",
+        "isMandatory": true,
+        "name": "Username",
+        "type": 4
+      },
+      {
+        "id": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
+        "isMandatory": true,
+        "name": "Secret",
+        "type": 3
+      }
+    ],
+    "commands": {
+      "heartbeat": {
+        "command": "<#\n.SYNOPSIS\nValidates if a secret matches the password hash for a SQL Server login.\n\n.DESCRIPTION\nThis script retrieves the password hash for the specified SQL Server login and compares it against the provided secret to validate if they match.\nReturns true if the password hashes match, false otherwise.\n\n.PARAMETER Secret\nThe secret to compare to the login's password hash.\n\n.PARAMETER Username \nThe SQL Server login to retrieve the password hash for.\n\n.PARAMETER Server\nThe SQL Server instance to connect to.\n\n.PARAMETER Instance\nThe name of the SQL Server instance to connect to. Default is the default instance.\n\n.PARAMETER ProviderSqlLoginUsername\nThe SQL login to use when authenticating to SQL Server. Uses Windows authentication if not specified.\n\n.PARAMETER ProviderSqlLoginPassword \nThe password for the provider SQL login. Must be a secure string.  \n\n.PARAMETER Port  \nThe TCP port to connect to SQL Server on. Default is 1433.\n\n.EXAMPLE \nPS> .\\Validate-SqlLoginHash.ps1 -Secret $hashedPassword -Username sqluser -Server sqlserver\n\nValidates if the $hashedPassword matches the hash for the sqluser login on the sqlserver default instance.\n\n.NOTES\nThis script executes T-SQL directly so permission requirements are based on the SQL Server permissions of the account used to run it.\n#>\n[CmdletBinding()]\nParam (\n    [Parameter(Mandatory)]\n    [string]$Secret,\n\n    [Parameter(Mandatory)]\n    [string]$Username,\n\n    [Parameter(Mandatory)]\n    [string]$Server,\n\n    [Parameter()]\n    [string]$Instance,\n\n    [Parameter()]\n    [string]$ProviderSqlLoginUsername,\n\n    [Parameter()]\n    $ProviderSqlLoginPassword,\n\n    [Parameter()]\n    [int]$Port\n)\n\n$ErrorActionPreference = 'Stop'\n\n## Define optional default parameter values. We can't use PowerShell parameter defaults because if you set up a property in\n## in DVLS and don't provide a value, DVLS will still use the parameter just pass an empty string\nif (!$Instance) { $Instance = '.' }\nif (!$Port) { $Port = 1433 }\nif ($ProviderSqlLoginPassword -and $ProviderSqlLoginPassword.GetType().Name -ne 'securestring') {\n    throw \"The provider SQL login password must be a secure string.\"\n}\n\nfunction decryptPassword {\n    param(\n        [securestring]$Password\n    )\n    try {\n        $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)\n        [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)\n    } finally {\n        ## Clear the decrypted password from memory\n        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)\n    }\n}\n\nfunction newConnectionString {\n    $connectionStringItems = @{\n        'Database' = 'master'\n        'Server'   = \"$Server\\$Instance,$Port\"\n    }\n    if ($ProviderSqlLoginUsername -and $ProviderSqlLoginPassword) {\n        ## Using SQL login to authenticate\n        $connectionStringItems += @{\n            'User ID'  = $ProviderSqlLoginUsername\n            'Password' = decryptPassword($ProviderSqlLoginPassword)\n        }\n    } else {\n        ## using the currently logged in user via Windows auth to authenticate\n        $connectionStringItems += @{\n            'Integrated Security' = 'True'\n        }\n    }\n    ($connectionStringItems.GetEnumerator() | ForEach-Object { \"$($_.Key)=$($_.Value)\" }) -join \";\"\n}\n\nfunction invokeSqlQuery {\n    param(\n        [string]$Query,\n        [string]$ConnectionString\n    )\n    try {\n        # Create a SQL connection\n        $connection = New-Object System.Data.SqlClient.SqlConnection $ConnectionString\n\n        # # Open the connection\n        $connection.Open()\n\n        # Execute the query\n        $command = $connection.CreateCommand()\n        $command.CommandText = $Query\n\n        # Execute the command and process the results\n        $reader = $command.ExecuteReader()\n        while ($reader.Read()) {\n            [PSCustomObject]@{\n                'name'          = $reader['name']\n                'password_hash' = ($reader['password_hash'] -join '')\n            }\n        }\n    } finally {\n        ## Close the connection and clean up\n        if ($connection) { \n            $connection.Close()\n        }\n        if ($reader) {\n            $reader.Close()\n        }\n    }\n}\n\ntry {\n    \n    $connectionString = newConnectionString\n    \n    $sqlLoginResult = invokeSqlQuery -Query \"SELECT name, password_hash FROM sys.sql_logins WHERE name = '$Username'\" -ConnectionString $connectionString\n    ($sqlLoginResult.password_hash -join '') -eq $Secret\n        \n} catch {\n    $PSCmdlet.ThrowTerminatingError($_)\n}",
+        "commandType": 1,
+        "id": "ea6b32c1-06b9-400d-bc5e-464e5f0e4b69",
+        "isActive": true,
+        "parameters": [
+          {
+            "name": "ProviderSqlLoginUsername",
+            "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73"
+          },
+          {
+            "name": "ProviderSqlLoginPassword",
+            "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
+          },
+          {
+            "name": "Server",
+            "propertyId": "572cf7d5-43bd-4a46-8b6d-772f9b14f164"
+          },
+          {
+            "name": "Secret",
+            "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
+            "source": 1
+          },
+          {
+            "name": "Username",
+            "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73",
+            "source": 1
+          },
+          {
+            "name": "Port",
+            "propertyId": "919c5d8d-ccd0-4d7e-9ed6-fd49f1621408"
+          },
+          {
+            "name": "Instance",
+            "propertyId": "44c1e508-7102-4cf4-8218-a64f13d19893"
+          }
+        ]
+      },
+      "resetPassword": {
+        "command": "<#\n.SYNOPSIS\nChanges the password for a SQL Server login.\n\n.DESCRIPTION\nThis script changes the password for the specified SQL Server login by executing an ALTER LOGIN statement. \n\n.PARAMETER Username\nThe name of the SQL Server login to change the password for.\n\n.PARAMETER NewPassword\nThe new password to set for the SQL Server login. Must be a secure string.\n\n.PARAMETER Server\nThe name of the SQL Server to connect to.\n\n.PARAMETER Instance\nThe name of the SQL Server instance to connect to. Default is the default instance.\n\n.PARAMETER ProviderSqlLoginUsername\nThe SQL login to use when authenticating to SQL Server. Uses Windows authentication if not specified.\n\n.PARAMETER ProviderSqlLoginPassword  \nThe password for the provider SQL login. Must be a secure string.\n\n.PARAMETER Port\nThe TCP port to connect to SQL Server on. Default is 1433.\n\n.EXAMPLE \nPS> .\\Set-SqlLoginPassword.ps1 -Username sqluser -NewPassword $password -Server sqlserver\n\nChanges the password for the sqluser login on the default instance of the sqlserver SQL Server using Windows authentication.\n\n.NOTES\nThis script executes T-SQL directly so permission requirements are based on the SQL Server permissions of the account used to run it rather than the PowerShell process account.\n#>\n\n[CmdletBinding()]\nParam (\n    [Parameter(Mandatory)]\n    [string]$Username,\n\n    [Parameter(Mandatory)]\n    $NewPassword,\n\n    [Parameter(Mandatory)]\n    [string]$Server,\n\n    [Parameter()]\n    [string]$Instance,\n\n    [Parameter()]\n    [string]$ProviderSqlLoginUsername,\n\n    [Parameter()]\n    $ProviderSqlLoginPassword,\n\n    [Parameter()]\n    [int]$Port\n)\n\n$ErrorActionPreference = 'Stop'\n\n## Define optional default parameter values. We can't use PowerShell parameter defaults because if you set up a property in\n## in DVLS and don't provide a value, DVLS will still use the parameter just pass an empty string\nif (!$Instance) { $Instance = '.'}\nif (!$Port) { $Port = 1433 }\nif ($ProviderSqlLoginPassword -and $ProviderSqlLoginPassword.GetType().Name -ne 'securestring') {\n    throw \"The provider SQL login password must be a secure string.\"\n}\nif ($NewPassword -and $NewPassword.GetType().Name -ne 'securestring') {\n    throw \"The new password must be a secure string.\"\n}\n\n\nfunction decryptPassword {\n    param(\n        [securestring]$Password\n    )\n    try {\n        $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)\n        [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)\n    } finally {\n        ## Clear the decrypted password from memory\n        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)\n    }\n}\n\nfunction newConnectionString {\n    $connectionStringItems = @{\n        'Database' = 'master'\n        'Server'   = \"$Server\\$Instance,$Port\"\n    }\n    if ($ProviderSqlLoginUsername -and $ProviderSqlLoginPassword) {\n        ## Using SQL login to authenticate\n        $connectionStringItems += @{\n            'User ID'  = $ProviderSqlLoginUsername\n            'Password' = decryptPassword($ProviderSqlLoginPassword)\n        }\n    } else {\n        ## using the currently logged in user via Windows auth to authenticate\n        $connectionStringItems += @{\n            'Integrated Security' = 'True'\n        }\n    }\n    ($connectionStringItems.GetEnumerator() | ForEach-Object { \"$($_.Key)=$($_.Value)\" }) -join \";\"\n}\n\nfunction invokeSqlQuery {\n    param(\n        [string]$Query,\n        [string]$ConnectionString\n    )\n    try {\n        # Create a SQL connection\n        $connection = New-Object System.Data.SqlClient.SqlConnection $ConnectionString\n\n        # # Open the connection\n        $connection.Open()\n\n        # Execute the query\n        $command = $connection.CreateCommand()\n        $command.CommandText = $Query\n\n        # Execute the command and process the results\n        $command.ExecuteReader()\n    } finally {\n        ## Close the connection and clean up\n        if ($connection) { \n            $connection.Close()\n        }\n        if ($reader) {\n            $reader.Close()\n        }\n    }\n}\n\ntry {\n    \n    $connectionString = newConnectionString\n    \n    invokeSqlQuery -Query \"ALTER LOGIN [$Username] WITH PASSWORD = '$(decryptPassword($NewPassword))';\" -ConnectionString $connectionString\n    $true\n\n} catch {\n    $PSCmdlet.ThrowTerminatingError($_)\n}",
+        "id": "c9ce78ad-a400-40f4-81f4-481851142319",
+        "isActive": true,
+        "parameters": [
+          {
+            "name": "Username",
+            "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73",
+            "source": 1
+          },
+          {
+            "name": "Server",
+            "propertyId": "572cf7d5-43bd-4a46-8b6d-772f9b14f164"
+          },
+          {
+            "name": "ProviderSqlLoginUsername",
+            "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73"
+          },
+          {
+            "name": "ProviderSqlLoginPassword",
+            "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
+          },
+          {
+            "name": "Port",
+            "propertyId": "919c5d8d-ccd0-4d7e-9ed6-fd49f1621408"
+          },
+          {
+            "name": "Instance",
+            "propertyId": "44c1e508-7102-4cf4-8218-a64f13d19893"
+          }
+        ]
+      },
+      "accountDiscovery": {
+        "command": "<#\n.SYNOPSIS\nChanges the password for a specified SQL Server login.\n\n.DESCRIPTION\nThis script updates the password for a given SQL Server login using a secure connection. It supports both SQL Server and Windows authentication methods. Optional parameters allow specifying the SQL Server instance, port, and credentials for SQL Server authentication.\n\n.PARAMETER Username\nThe username of the SQL Server login whose password needs to be updated.\n\n.PARAMETER NewPassword\nThe new password for the SQL Server login. This parameter should be a secure string.\n\n.PARAMETER Server\nThe name or IP address of the SQL Server.\n\n.PARAMETER Instance\nThe instance of SQL Server to connect to. Defaults to the default instance if not specified.\n\n.PARAMETER ProviderSqlLoginUsername\nThe username for SQL Server authentication. If not specified, Windows authentication is used.\n\n.PARAMETER ProviderSqlLoginPassword\nThe password for SQL Server authentication. This parameter should be a secure string. Required if ProviderSqlLoginUsername is specified.\n\n.PARAMETER Port\nThe port number for the SQL Server. Defaults to 1433 if not specified.\n\n.EXAMPLE\nPS> .\\YourScriptName.ps1 -Username 'myUser' -NewPassword (ConvertTo-SecureString -AsPlainText \"newPassword\" -Force) -Server 'localhost'\n\nThis example changes the password for 'myUser' on the default SQL Server instance running on 'localhost' using Windows authentication.\n\n.EXAMPLE\nPS> .\\YourScriptName.ps1 -Username 'myUser' -NewPassword (ConvertTo-SecureString -AsPlainText \"newPassword\" -Force) -Server 'myServer' -Instance 'myInstance' -ProviderSqlLoginUsername 'admin' -ProviderSqlLoginPassword (ConvertTo-SecureString -AsPlainText \"adminPassword\" -Force) -Port 1433\n\nThis example changes the password for 'myUser' on a specified instance of SQL Server using SQL Server authentication.\n\n.NOTES\nEnsure that the NewPassword and ProviderSqlLoginPassword parameters are passed as secure strings to maintain security best practices.\n\n.LINK\nURL to more information, if available\n\n#>\n[CmdletBinding()]\n[OutputType([System.Management.Automation.PSCustomObject])]\nParam (\n    [Parameter(Mandatory)]\n    [string]$Server,\n\n    [Parameter()]\n    [string]$Instance,\n\n    [Parameter()]\n    [string]$ProviderSqlLoginUsername,\n\n    [Parameter()]\n    $ProviderSqlLoginPassword, ## purposeful no explicit type here to allow DVLS to pass an empty string\n\n    [Parameter()]\n    [int]$Port\n)\n\n$ErrorActionPreference = 'Stop'\n\n## Define optional default parameter values. We can't use PowerShell parameter defaults because if you set up a property in\n## in DVLS and don't provide a value, DVLS will still use the parameter just pass an empty string\nif (!$Instance) { $Instance = '.' }\nif (!$Port) { $Port = 1433 }\nif ($ProviderSqlLoginPassword -and $ProviderSqlLoginPassword.GetType().Name -ne 'securestring') {\n    throw \"The provider SQL login password must be a secure string.\"\n}\n\nfunction decryptPassword {\n    param(\n        [securestring]$Password\n    )\n    try {\n        $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)\n        [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)\n    } finally {\n        ## Clear the decrypted password from memory\n        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)\n    }\n}\n\nfunction newConnectionString {\n    $connectionStringItems = @{\n        'Database' = 'master'\n        'Server'   = \"$Server\\$Instance,$Port\"\n    }\n    if ($ProviderSqlLoginUsername -and $ProviderSqlLoginPassword) {\n        ## Using SQL login to authenticate\n        $connectionStringItems += @{\n            'User ID'  = $ProviderSqlLoginUsername\n            'Password' = decryptPassword($ProviderSqlLoginPassword)\n        }\n    } else {\n        ## using the currently logged in user via Windows auth to authenticate\n        $connectionStringItems += @{\n            'Integrated Security' = 'True'\n        }\n    }\n    ($connectionStringItems.GetEnumerator() | ForEach-Object { \"$($_.Key)=$($_.Value)\" }) -join \";\"\n}\n\nfunction invokeSqlQuery {\n    param(\n        [string]$Query,\n        [string]$ConnectionString\n    )\n    try {\n        # Create a SQL connection\n        $connection = New-Object System.Data.SqlClient.SqlConnection $ConnectionString\n\n        # # Open the connection\n        $connection.Open()\n\n        # Execute the query\n        $command = $connection.CreateCommand()\n        $command.CommandText = $Query\n\n        # Execute the command and process the results\n        $reader = $command.ExecuteReader()\n        while ($reader.Read()) {\n            [PSCustomObject]@{\n                'name'          = $reader['name']\n                'password_hash' = ($reader['password_hash'] -join '')\n            }\n        }\n    } finally {\n        ## Close the connection and clean up\n        if ($connection) { \n            $connection.Close()\n        }\n        if ($reader) {\n            $reader.Close()\n        }\n    }\n}\n\ntry {\n\n    $connectionString = newConnectionString\n\n    $selectProps = @(\n        @{'n' = 'id'; e = { $_.name } }\n        @{'n' = 'username'; e = { $_.name } }\n        @{'n' = 'secret'; e = { ($_.password_hash -join '') } }\n    )\n\n    invokeSqlQuery -Query \"SELECT name, password_hash FROM sys.sql_logins;\" -ConnectionString $connectionString | Select-Object -Property $selectProps\n    \n} catch {\n    $PSCmdlet.ThrowTerminatingError($_)\n}",
+        "commandType": 2,
+        "id": "813c0aef-83af-40c4-bffe-b240f5190cc6",
+        "isActive": true,
+        "parameters": [
+          {
+            "name": "ProviderSQLLoginUsername",
+            "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73"
+          },
+          {
+            "name": "ProviderSQLLoginPassword",
+            "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
+          },
+          {
+            "name": "Server",
+            "propertyId": "572cf7d5-43bd-4a46-8b6d-772f9b14f164"
+          },
+          {
+            "name": "Port",
+            "propertyId": "919c5d8d-ccd0-4d7e-9ed6-fd49f1621408"
+          },
+          {
+            "name": "Instance",
+            "propertyId": "44c1e508-7102-4cf4-8218-a64f13d19893"
+          }
+        ]
+      }
+    },
+    "description": "",
+    "id": "1bc5784b-f63a-497c-85dc-b621f63bb24e",
+    "imageName": "",
+    "name": "Microsoft SQL Server Login",
+    "providerProperties": [
+      {
+        "id": "c24049c5-9ec4-4f26-832c-86f283067c73",
+        "name": "SQLLoginUsername",
+        "type": 4
+      },
+      {
+        "id": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
+        "name": "SQLLoginPassword",
+        "type": 3
+      },
+      {
+        "id": "572cf7d5-43bd-4a46-8b6d-772f9b14f164",
+        "isMandatory": true,
+        "name": "Server"
+      },
+      {
+        "id": "919c5d8d-ccd0-4d7e-9ed6-fd49f1621408",
+        "name": "Port",
+        "type": 1
+      },
+      {
+        "id": "44c1e508-7102-4cf4-8218-a64f13d19893",
+        "name": "Instance"
+      }
+    ]
+  }
+}
