@@ -1,5 +1,29 @@
 #requires -Version 7
 
+<#
+.SYNOPSIS
+This script tests SQL Server connectivity and permissions.
+.DESCRIPTION
+The script performs various connectivity and permission tests on a SQL Server instance using both SQL login and Windows credentials.
+.PARAMETER Endpoint
+Specifies the SQL Server endpoint.
+.PARAMETER Port
+Specifies the port on which the SQL Server is listening.
+.PARAMETER SqlLoginCredential
+Specifies the SQL login credentials as a PSCredential object. Either this or WindowsAccountCredential must be provided.
+.PARAMETER WindowsAccountCredential
+Specifies the Windows account credentials as a PSCredential object. Either this or SqlLoginCredential must be provided.
+.EXAMPLE
+PS> .\sql_server_provider.prerequisites.tests.ps1.ps1 -Endpoint "sql.example.com" -Port 1433 -SqlLoginCredential $cred
+This example tests the SQL Server at sql.example.com on port 1433 using a SQL login stored in $cred.
+.EXAMPLE
+PS> .\sql_server_provider.prerequisites.tests.ps1.ps1 -Endpoint "sql.example.com" -Port 1433 -WindowsAccountCredential $winCred
+This example tests the SQL Server at sql.example.com on port 1433 using Windows authentication with credentials stored in $winCred.
+.NOTES
+This script includes a function to decrypt passwords from secure strings for use in SQL connection strings.
+#>
+
+
 param (
     [Parameter(Mandatory)]
     [ValidateNotNullOrEmpty()]
