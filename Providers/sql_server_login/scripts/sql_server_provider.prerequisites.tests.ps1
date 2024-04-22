@@ -1,3 +1,5 @@
+#requires -Version 7
+
 param (
     [Parameter(Mandatory)]
     [ValidateNotNullOrEmpty()]
@@ -30,11 +32,50 @@ function decryptPassword([securestring]$Password) {
     }
 }
 
+function runPwshAs([pscredential]$Credential, [scriptblock]$Code) {
+
+    $psFilePath = (Get-Process -Id $PID).Path
+
+    $processInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $processInfo.FileName = $psFilePath
+    $processInfo.Arguments = "-NoProfile -Command & {$($Code.ToString())} -Endpoint '$Endpoint' -Port $Port"
+    $processInfo.UseShellExecute = $false
+    $processInfo.RedirectStandardOutput = $true
+    $processInfo.LoadUserProfile = $false
+    $processInfo.RedirectStandardError = $true
+    $processInfo.CreateNoWindow = $true
+    $processInfo.UserName = $cred.GetNetworkCredential().UserName
+    $processInfo.Password = $cred.Password
+
+    $credDomain = $cred.GetNetworkCredential().Domain
+    if ($credDomain) {
+        $processInfo.Domain = $credDomain
+    } else {
+        $processInfo.Domain = (hostname)
+    }
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $processInfo
+    $process.Start() | Out-Null
+    $process.WaitForExit()
+    $process
+}
+
 [array]$tests = @(
     @{
         'Name'    = 'the SQL Server connection port is open'
         'Command' = {
-            Test-Connection -TargetName $Endpoint -TcpPort $Port -Quiet
+
+            try {
+                $result = Test-Connection -TargetName $Endpoint -TcpPort $Port -Quiet
+            } catch {
+                $errMsg = $_.Exception.Message
+            }
+
+            [pscustomobject]@{
+                'ErrorMessage' = $errMsg
+                'Result'       = $result
+            }
         }
     },
     @{
@@ -46,9 +87,14 @@ function decryptPassword([securestring]$Password) {
                 $connection.Open()
                 $true
             } catch {
-                $false
+                $errMsg = $_.Exception.Message
             } finally {
                 $connection.Close()
+            }
+
+            [pscustomobject]@{
+                'ErrorMessage' = $errMsg
+                'Result'       = !$errMsg
             }
             
         }
@@ -65,11 +111,16 @@ function decryptPassword([securestring]$Password) {
                 $command = $connection.CreateCommand()
                 $command.CommandText = "SELECT CASE WHEN IS_SRVROLEMEMBER('sysadmin') = 1 OR IS_SRVROLEMEMBER('securityadmin') = 1 OR IS_ROLEMEMBER('db_owner') = 1 THEN 1 ELSE 0 END"
                 
-                $command.ExecuteScalar() -eq 1
+                $sqlResult = $command.ExecuteScalar() -eq 1
             } catch {
-                $false
+                $errMsg = $_.Exception.Message
             } finally {
                 $connection.Close()
+            }
+
+            [pscustomobject]@{
+                'ErrorMessage' = $errMsg
+                'Result'       = $sqlResult
             }
         }
         'ParametersUsed' = @('SqlLoginCredential')
@@ -86,29 +137,17 @@ function decryptPassword([securestring]$Password) {
                 $connection.Close()
             }
 
-            $processInfo = New-Object System.Diagnostics.ProcessStartInfo
-            $processInfo.FileName = "pwsh.exe"
-            $processInfo.Arguments = "-NoProfile -Command & {$($testCode.ToString())} -Endpoint '$Endpoint' -Port $Port"
-            $processInfo.UseShellExecute = $false
-            $processInfo.RedirectStandardOutput = $true
-            $processInfo.LoadUserProfile = $false
-            $processInfo.RedirectStandardError = $true
-            $processInfo.CreateNoWindow = $true
-            $processInfo.Domain = $cred.GetNetworkCredential().Domain
-            $processInfo.UserName = $cred.GetNetworkCredential().UserName
-            $processInfo.Password = $cred.Password
+            $process = runPwshAs $WindowsAccountCredential $testCode
 
-            $process = New-Object System.Diagnostics.Process
-            $process.StartInfo = $processInfo
-            $process.Start() | Out-Null
-            $process.WaitForExit()
-            $errorOutput = $process.StandardError.ReadToEnd()
+            $stdError = $process.StandardError.ReadToEnd()
 
-            !$errorOutput
-            
+            [pscustomobject]@{
+                'ErrorMessage' = $stdError
+                'Result'       = !$stdError
+            }
         }
         'ParametersUsed' = @('WindowsAccountCredential')
-    },
+    }
     @{
         'Name'           = 'the Windows account has permission to update SQL login passwords'
         'Command'        = {
@@ -119,36 +158,26 @@ function decryptPassword([securestring]$Password) {
                 $connection.ConnectionString = ('Server={0},{1};Database=master;Integrated Security=True;' -f $Endpoint, $Port)
                 try {
                     $connection.Open()
+
+                    $command = $connection.CreateCommand()
+                    $command.CommandText = "SELECT CASE WHEN IS_SRVROLEMEMBER('sysadmin') = 1 OR IS_SRVROLEMEMBER('securityadmin') = 1 OR IS_ROLEMEMBER('db_owner') = 1 THEN 1 ELSE 0 END"
+            
+                    $command.ExecuteScalar() | Should -Be 1
+                    $connection.Close()
                 } catch {
                     Write-Output 'inconclusive'
                 }
-                $command = $connection.CreateCommand()
-                $command.CommandText = "SELECT CASE WHEN IS_SRVROLEMEMBER('sysadmin') = 1 OR IS_SRVROLEMEMBER('securityadmin') = 1 OR IS_ROLEMEMBER('db_owner') = 1 THEN 1 ELSE 0 END"
-            
-                $command.ExecuteScalar() | Should -Be 1
-                $connection.Close()
             }
 
+            $process = runPwshAs $WindowsAccountCredential $testCode
 
-            $processInfo = New-Object System.Diagnostics.ProcessStartInfo
-            $processInfo.FileName = "pwsh.exe"
-            $processInfo.Arguments = "-NoProfile -Command & {$($testCode.ToString())} -Endpoint '$Endpoint' -Port $Port"
-            $processInfo.UseShellExecute = $false
-            $processInfo.RedirectStandardOutput = $true
-            $processInfo.LoadUserProfile = $false
-            $processInfo.RedirectStandardError = $true
-            $processInfo.CreateNoWindow = $true
-            $processInfo.Domain = $cred.GetNetworkCredential().Domain
-            $processInfo.UserName = $cred.GetNetworkCredential().UserName
-            $processInfo.Password = $cred.Password
+            $stdError = $process.StandardError.ReadToEnd()
+            $stdOutput = $process.StandardOutput.ReadToEnd()
 
-            $process = New-Object System.Diagnostics.Process
-            $process.StartInfo = $processInfo
-            $process.Start() | Out-Null
-            $process.WaitForExit()
-            $errorOutput = $process.StandardError.ReadToEnd()
-
-            !$errorOutput
+            [pscustomobject]@{
+                'ErrorMessage' = $stdError
+                'Result'       = (!$stdOutput -and !$stdError)
+            }
         }
         'ParametersUsed' = @('WindowsAccountCredential')
     }
@@ -156,8 +185,8 @@ function decryptPassword([securestring]$Password) {
 
 [array]$passedTests = foreach ($test in $tests.where({ $paramsUsed = $_.ParametersUsed; !$_.ContainsKey('ParametersUsed') -or $PSBoundParameters.Keys.where({ $_ -in $paramsUsed }) })) {
     $result = & $test.Command
-    if (-not $result) {
-        Write-Error -Message "The test [$($test.Name)] failed."
+    if (-not $result.Result) {
+        Write-Error -Message "The test [$($test.Name)] failed: [$($result.ErrorMessage)]"
     } else {
         1
     }
@@ -165,6 +194,4 @@ function decryptPassword([securestring]$Password) {
 
 if ($passedTests.Count -eq $tests.Count) {
     Write-Host "All tests have passed. You're good to go!" -ForegroundColor Green
-} else {
-    Write-Host "Some tests failed. Please check the errors above." -ForegroundColor Red
 }
