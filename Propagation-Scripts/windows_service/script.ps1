@@ -25,7 +25,7 @@ param(
     [string]$ServiceName,
 
     [Parameter()]
-    [ValidateSet('yes','')]
+    [ValidateSet('yes', '')]
     [string]$RestartService
 )
 
@@ -67,9 +67,7 @@ $scriptBlock = {
         }
     }
 
-    function GetUserUPN ($UserPattern) {
-    
-        # Extract username and domain from the input pattern
+    function extractUsernameDomain ($UserPattern) {
         if ($UserPattern -match '^(.+)@(.+)$') {
             $username = $Matches[1]
             $domain = $Matches[2]
@@ -78,44 +76,90 @@ $scriptBlock = {
             $username = $Matches[2]
         } else {
             $username = $UserPattern
-            $domain = $null
+            $domain = '.'
         }
-    
-        # If domain is not an FQDN or is missing, get the current domain using WMI
-        if (-not $domain -or $domain -notmatch '\.') {
-            $domain = (Get-CimInstance -Class Win32_ComputerSystem).Domain
+        [pscustomobject]@{
+            UserName = $username
+            Domain   = $domain
         }
+    }
+
+    function GetServiceAccountName ($User) {
     
-        # Return the UPN
-        "$username@$domain"
+        if ($User.Domain -eq '.') {
+            $accountName = "$($User.Domain)\$($User.Username)"
+        } else {
+            $fqdnDomain = (Get-CimInstance -Class Win32_ComputerSystem).Domain
+            if ($fqdnDomain.split('.')[0] -ne $User.Domain) {
+                throw "Could not determine the domain. Use a UPN (username@domain.local) for a more specific match."
+            }
+            $accountName = "$($User.Username)@$fqdnDomain"
+        }
+
+        $accountName
+    }
+
+    function ValidateUserAccountPassword {
+        [CmdletBinding()]
+        param(
+            [pscustomobject]$User,
+            [securestring]$Password
+        )
+
+        try {
+            Add-Type -AssemblyName System.DirectoryServices.AccountManagement
+
+            if ($User.Domain -ne '.') {
+                $context = New-Object System.DirectoryServices.AccountManagement.PrincipalContext([System.DirectoryServices.AccountManagement.ContextType]::Domain, $User.Domain)
+            } else {
+                $context = New-Object System.DirectoryServices.AccountManagement.PrincipalContext([System.DirectoryServices.AccountManagement.ContextType]::Machine)
+            }
+        
+            $context.ValidateCredentials($User.UserName, (decryptPassword($Password)))
+        } catch {
+            Write-Error "An error occurred: $_"
+        } finally {
+            if ($context) {
+                $context.Dispose()
+            }
+        }
     }
     #endregion
 
     $ErrorActionPreference = 'Stop'
 
     ## Assigning to variables inside the scriptblock allows mocking of args with Pester
-    $username = GetUserUPN($args[0])
+
     $pw = $args[1]
     $serviceNames = $args[2]
     $restartService = $args[3]
 
+    ## Get the user account in a format we can validate the password for
+    $user = extractUsernameDomain $args[0]
+
+    ## Ensure the password is valid
+    $validatePwResult = ValidateUserAccountPassword -User $user -Password $pw
+    if (!$validatePwResult) {
+        throw "The password for user account [$($User.UserName)] is invalid."
+    }
+
+    $serviceAccountName = GetServiceAccountName($user)
+
     if (-not $serviceNames) {
-        $cimFilter = "StartName='$username'"
+        $cimFilter = "StartName='$serviceAccountName'"
     } else {
-        $cimFilter = "(Name='{0}') AND StartName='{1}'" -f ($serviceNames -join "' OR Name='"), $username
+        $cimFilter = "(Name='{0}') AND StartName='{1}'" -f ($serviceNames -join "' OR Name='"), $serviceAccountName
     }
     $cimFilter = $cimFilter.replace('\', '\\')
 
     $serviceInstances = Get-CimInstance -ClassName Win32_Service -Filter $cimFilter
-    if ($serviceNames -and ($notFoundServices = $serviceNames.where({ $_ -notin @($serviceInstances).Name }))) {
-        Write-Output -InputObject ("The following services could not be found on host [{0}] running as [{1}]: {2}. Skipping these services." -f (hostname), $username, ($notFoundServices -join ','))
-    } elseif (-not $serviceInstances) {
-        throw "No services found on [{0}] running as [{1}] could be found." -f (hostname), $username
+    if (-not $serviceInstances) {
+        throw "No services found on [{0}] running as [{1}] could be found." -f (hostname), $serviceAccountName
     }
 
     $results = foreach ($servInst in $serviceInstances) {
         try {
-            $updateResult = updateServiceUserPassword -ServiceInstance $servInst -Username $username -Password $pw
+            $updateResult = updateServiceUserPassword -ServiceInstance $servInst -Username $serviceAccountName -Password $pw
             if ($updateResult.ReturnValue -ne 0) {
                 throw "Password update for service [{0}] failed with return value [{1}]" -f $servInst.Name, $updateResult.ReturnValue
             }
@@ -124,7 +168,7 @@ $scriptBlock = {
             }
             $true
         } catch {
-            $PSCmdlet.ThrowTerminatingError($_)
+            Write-Error -Message $_.Exception.Message
         }
     }
     @($results).Count -eq @($serviceInstances).Count
