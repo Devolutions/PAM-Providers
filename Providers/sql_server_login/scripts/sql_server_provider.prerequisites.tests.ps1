@@ -34,6 +34,10 @@ param (
 
     [Parameter()]
     [ValidateNotNullOrEmpty()]
+    [string]$InstanceName = '.',
+
+    [Parameter()]
+    [ValidateNotNullOrEmpty()]
     [pscredential]$SqlLoginCredential,
 
     [Parameter()]
@@ -102,11 +106,38 @@ function runPwshAs([pscredential]$Credential, [scriptblock]$Code) {
         }
     },
     @{
+        'Name'           = 'SQL Server authentication is enabled'
+        'Command'        = {
+            try {
+                $connection = New-Object System.Data.SqlClient.SqlConnection
+                $connection.ConnectionString = "Server=$Endpoint\$InstanceName,$Port;Database=master;User ID=$($SqlLoginCredential.UserName);Password=$(decryptPassword($SqlLoginCredential.Password));"
+                $connection.Open()
+
+                $command = $connection.CreateCommand()
+                $command.CommandText = "SELECT SERVERPROPERTY('IsIntegratedSecurityOnly')"
+                
+                $command.ExecuteScalar() -eq 0
+
+            } catch {
+                $errMsg = $_.Exception.Message
+            } finally {
+                $connection.Close()
+            }
+
+            [pscustomobject]@{
+                'ErrorMessage' = $errMsg
+                'Result'       = !$errMsg
+            }
+            
+        }
+        'ParametersUsed' = @('SqlLoginCredential')
+    },
+    @{
         'Name'           = 'the provider SQL login UserName can authenticate to the SQL server'
         'Command'        = {
             try {
                 $connection = New-Object System.Data.SqlClient.SqlConnection
-                $connection.ConnectionString = "Server=$Endpoint\.,$Port;Database=master;User ID=$($SqlLoginCredential.UserName);Password=$(decryptPassword($SqlLoginCredential.Password));"
+                $connection.ConnectionString = "Server=$Endpoint\$InstanceName,$Port;Database=master;User ID=$($SqlLoginCredential.UserName);Password=$(decryptPassword($SqlLoginCredential.Password));"
                 $connection.Open()
                 $true
             } catch {
@@ -128,7 +159,7 @@ function runPwshAs([pscredential]$Credential, [scriptblock]$Code) {
         'Command'        = {
             try {
                 $connection = New-Object System.Data.SqlClient.SqlConnection
-                $connection.ConnectionString = "Server=$Endpoint\.,$Port;Database=master;User ID=$($SqlLoginCredential.UserName);Password=$(decryptPassword($SqlLoginCredential.Password));"
+                $connection.ConnectionString = "Server=$Endpoint\$InstanceName,$Port;Database=master;User ID=$($SqlLoginCredential.UserName);Password=$(decryptPassword($SqlLoginCredential.Password));"
                 $connection.Open()
 
                 $command = $connection.CreateCommand()
@@ -206,7 +237,9 @@ function runPwshAs([pscredential]$Credential, [scriptblock]$Code) {
     }
 )
 
-[array]$passedTests = foreach ($test in $tests.where({ $paramsUsed = $_.ParametersUsed; !$_.ContainsKey('ParametersUsed') -or $PSBoundParameters.Keys.where({ $_ -in $paramsUsed }) })) {
+$applicableTests = $tests.where({ $paramsUsed = $_.ParametersUsed; !$_.ContainsKey('ParametersUsed') -or $PSBoundParameters.Keys.where({ $_ -in $paramsUsed })})
+
+[array]$passedTests = foreach ($test in $applicableTests) {
     $result = & $test.Command
     if (-not $result.Result) {
         Write-Error -Message "The test [$($test.Name)] failed: [$($result.ErrorMessage)]"
@@ -215,6 +248,6 @@ function runPwshAs([pscredential]$Credential, [scriptblock]$Code) {
     }
 }
 
-if ($passedTests.Count -eq $tests.Count) {
+if ($passedTests.Count -eq $applicableTests.Count) {
     Write-Host "All tests have passed. You're good to go!" -ForegroundColor Green
 }
