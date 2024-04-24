@@ -1,43 +1,43 @@
+#requires -Version 7
+
 <#
 .SYNOPSIS
-This script updates the password of a service account on a specified endpoint and optionally restarts the service.
+Updates the password for a specified service account and optionally restarts the service on a remote system.
 
 .DESCRIPTION
-The script connects to a remote server using provided credentials and changes the password stored for the service(s). 
-It supports validation of the new password against the account and can restart the services upon successful password update.
+This script updates the service account password on a specified endpoint. It supports both domain and local user accounts and can handle multiple services. If specified, it can also restart the services after updating the password.
 
 .PARAMETER Endpoint
-Specifies the target endpoint (server) where the service account password needs to be updated.
+Specifies the target endpoint where the service(s) are running. This should be the hostname or IP address of the remote system.
 
 .PARAMETER EndpointUserName
-Specifies the username used to authenticate to the endpoint. This should have adequate permissions to manage services and 
-accounts on the target server.
+Specifies the username used to authenticate against the endpoint. This should be an account with permissions to modify service settings.
 
 .PARAMETER EndpointPassword
-Specifies the secure password for the EndpointUserName. This must be a SecureString to ensure security during transmission.
+Specifies the password for the EndpointUserName as a secure string.
 
 .PARAMETER AccountUserName
-Specifies the service account username whose password needs updating. It can be in 'user@domain', 'domain\user', or 'user' format.
+Specifies the service account username whose password needs updating. This parameter must be a flat username without domain information.
 
 .PARAMETER NewPassword
-Specifies the new password for the service account. This must be a SecureString to ensure it is handled securely.
+Specifies the new password for the service account as a secure string.
+
+.PARAMETER AccountUserNameDomain
+Optional. Specifies the domain of the service account in FQDN format if the account is a domain account.
 
 .PARAMETER ServiceName
-Optional. Specifies the service(s) associated with the account. Multiple services can be specified, separated by commas. 
-If omitted, the script will attempt to update the account password for all services running under the specified account.
+Optional. Specifies the name of the service that needs the service account password updated. If not provided, all services running under the specified account will be updated.
 
 .PARAMETER RestartService
-Optional. Specifies whether to restart the service after updating the password. Acceptable values are 'yes' or 
-'' (empty string for no). Default is no restart.
+Optional. Specifies whether to restart the service after updating the password. Acceptable values are 'yes' to restart the service, or an empty string to leave the service running without restarting.
 
 .EXAMPLE
-.\script.ps1 -Endpoint "Server01" -EndpointUserName "admin" -EndpointPassword (ConvertTo-SecureString "Password123" -AsPlainText -Force) -AccountUserName "serviceaccount" -NewPassword (ConvertTo-SecureString "NewPassword123" -AsPlainText -Force) -ServiceName "Service01,Service02" -RestartService "yes"
+PS C:\> .\script.ps1 -Endpoint 'server01' -EndpointUserName 'administrator' -EndpointPassword (ConvertTo-SecureString 'Passw0rd!' -AsPlainText -Force) -AccountUserName 'svc_account' -NewPassword (ConvertTo-SecureString 'N3wPassw0rd!' -AsPlainText -Force) -AccountUserNameDomain 'domain.local' -ServiceName 'MyService' -RestartService 'yes'
 
-This example updates the password for 'serviceaccount' on 'Server01' for 'Service01' and 'Service02', then restarts those services.
+This example updates the password for the 'svc_account' user on the 'domain.local' domain, specifically for 'MyService' on 'server01', and restarts the service after the update.
 
 .NOTES
-Make sure that the user running this script has appropriate permissions on the remote system to manage services and user accounts.
-Ensure that the network policies and firewall settings allow remote management and service manipulation commands.
+This script requires PowerShell Remoting to be enabled and configured on the target endpoint. Ensure credentials provided have the necessary administrative rights on the remote system.
 #>
 [CmdletBinding()]
 param(
@@ -55,12 +55,22 @@ param(
 
     [Parameter(Mandatory)]
     [ValidateNotNullOrEmpty()]
-    [ValidatePattern('^(?:(?:([^@\\]+)@|([^@\\]+)\\)?([^@\\]+))?$')]
+    [ValidatePattern(
+        '^\w+$',
+        ErrorMessage = 'You must provide the AccountUserName parameter as a flat name like "user"; not domain\user, et al. To specify a domain, use the AccountUserNameDomain parameter.'
+    )]
     [string]$AccountUserName,
 
     [Parameter(Mandatory)]
     [ValidateNotNullOrEmpty()]
     [securestring]$NewPassword,
+
+    [Parameter()]
+    [ValidatePattern(
+        '^\w+\.\w+$',
+        ErrorMessage = 'When using the AccountUserNameDomain parameter, you must provide the domain as an FQDN (domain.local)'
+    )]
+    [string]$AccountUserNameDomain,
 
     [Parameter()]
     [string]$ServiceName,
@@ -101,68 +111,57 @@ $scriptBlock = {
         }
     }
 
-    function updateServiceUserPassword($ServiceInstance, [string]$UserName, [securestring]$Password) {
+    function updateServiceUserPassword {
+        param(
+            $ServiceInstance,
+            [string]$UserName,
+            [securestring]$Password
+        )    
+    
         Invoke-CimMethod -InputObject $ServiceInstance -MethodName Change -Arguments @{
             StartName     = $UserName
             StartPassword = decryptPassword($Password)
         }
     }
 
-    function extractUsernameDomain ($UserPattern) {
-        if ($UserPattern -match '^(.+)@(.+)$') {
-            $username = $Matches[1]
-            $domain = $Matches[2]
-        } elseif ($UserPattern -match '^(.+)\\(.+)$') {
-            $domain = $Matches[1]
-            $username = $Matches[2]
+    function GetServiceAccountNames {
+        param(
+            $UserName,
+            $Domain
+        )
+
+        if (!$Domain) {
+            ## local account
+            @(
+                "$($Domain)\$($Username)" ## domain\user
+            )
         } else {
-            $username = $UserPattern
-            $domain = '.'
-        }
-        [pscustomobject]@{
-            UserName = $username
-            Domain   = $domain
-        }
-    }
-
-    function GetServiceAccountName ($User) {
-
-        switch -Regex ($User.Domain) {
-            '^\.$' {
-                 "$($User.Domain)\$($User.Username)"
-                 break
-            }
-            '^\w+\.\w+$' {
-                "$($User.Username)@$($User.Domain)"
-                break
-            }
-            default {
-                $fqdnDomain = (Get-CimInstance -Class Win32_ComputerSystem).Domain
-                if ($fqdnDomain.split('.')[0] -ne $_) {
-                    throw "Could not determine the domain. Use a UPN (username@domain.local) for the AccountUserName parameter."
-                }
-                "$($User.Username)@$fqdnDomain"
-            }
+            ## Domain account with domain as FQDN
+            @(
+                "$($Username)@$($Domain)", ## user@domain.local
+                "$($Domain.split('.')[0])\$($Username)" ## domain\user
+            )
         }
     }
 
     function ValidateUserAccountPassword {
         [CmdletBinding()]
         param(
-            [pscustomobject]$User,
+            [string]$UserName,
+            [string]$Domain,
             [securestring]$Password
         )
 
         try {
             Add-Type -AssemblyName System.DirectoryServices.AccountManagement
 
-            if ($User.Domain -ne '.') {
-                $context = New-Object System.DirectoryServices.AccountManagement.PrincipalContext([System.DirectoryServices.AccountManagement.ContextType]::Domain, $User.Domain)
+            if ($Domain) {
+                $context = New-Object System.DirectoryServices.AccountManagement.PrincipalContext([System.DirectoryServices.AccountManagement.ContextType]::Domain, $Domain)
             } else {
                 $context = New-Object System.DirectoryServices.AccountManagement.PrincipalContext([System.DirectoryServices.AccountManagement.ContextType]::Machine)
             }
         
-            $context.ValidateCredentials($User.UserName, (decryptPassword($Password)))
+            $context.ValidateCredentials($UserName, (decryptPassword($Password)))
         } catch {
             Write-Error "An error occurred: $_"
         } finally {
@@ -176,37 +175,36 @@ $scriptBlock = {
     $ErrorActionPreference = 'Stop'
 
     ## Assigning to variables inside the scriptblock allows mocking of args with Pester
-
-    $pw = $args[1]
-    $serviceNames = $args[2]
-    $restartService = $args[3]
-
-    ## Get the user account in a format we can validate the password for
-    $user = extractUsernameDomain $args[0]
+    $userName = $args[0]
+    $userDomain = $args[1]
+    $pw = $args[2]
+    $serviceNames = $args[3]
+    $restartService = $args[4]
 
     ## Ensure the password is valid
-    $validatePwResult = ValidateUserAccountPassword -User $user -Password $pw
+    $validatePwResult = ValidateUserAccountPassword -UserName $userName -Domain $userDomain -Password $pw
     if (!$validatePwResult) {
-        throw "The password for user account [$($User.UserName)] is invalid."
+        throw "The password for user account [$($UserName)] is invalid. Did you mean to provide a domain account? If so, use the AccountUserNameDomain parameter."
     }
 
-    $serviceAccountName = GetServiceAccountName($user)
+    $serviceAccountNames = GetServiceAccountNames -UserName $userName -Domain $userDomain
+    $startNameCimQuery = "(StartName = '{0}')" -f ($serviceAccountNames -join "' OR StartName = '") ## (StartName = 'user@domain.local' OR StartName = 'domain\user')
 
     if (-not $serviceNames) {
-        $cimFilter = "StartName='$serviceAccountName' OR StartName = '$($user.Domain)\$($user.UserName)'"
+        $cimFilter = $startNameCimQuery
     } else {
-        $cimFilter = "(Name='{0}') AND (StartName={1})" -f ($serviceNames -join "' OR Name='"), "'$serviceAccountName' OR StartName = '$($user.Domain)\$($user.UserName)'"
+        $cimFilter = "(Name='{0}') AND {1}" -f ($serviceNames -join "' OR Name='"), $startNameCimQuery
     }
     $cimFilter = $cimFilter.replace('\', '\\')
-
+    
     $serviceInstances = Get-CimInstance -ClassName Win32_Service -Filter $cimFilter
     if (-not $serviceInstances) {
-        throw "No services found on [{0}] running as [{1}] could be found." -f (hostname), $serviceAccountName
+        throw "No services found on [{0}] running as [{1}] could be found." -f (hostname), $serviceAccountNames[0]
     }
 
     $results = foreach ($servInst in $serviceInstances) {
         try {
-            $updateResult = updateServiceUserPassword -ServiceInstance $servInst -Username $serviceAccountName -Password $pw
+            $updateResult = updateServiceUserPassword -ServiceInstance $servInst -Username $serviceAccountNames[0] -Password $pw
             if ($updateResult.ReturnValue -ne 0) {
                 throw "Password update for service [{0}] failed with return value [{1}]" -f $servInst.Name, $updateResult.ReturnValue
             }
@@ -229,6 +227,6 @@ $invParams = @{
     ComputerName = $Endpoint
     ScriptBlock  = $scriptBlock
     Credential   = $credential
-    ArgumentList = $AccountUserName, $NewPassword, $serviceNames, $RestartService
+    ArgumentList = $AccountUserName, $AccountUserNameDomain, $NewPassword, $serviceNames, $RestartService
 }
 Invoke-Command @invParams
