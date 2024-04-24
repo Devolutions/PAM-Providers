@@ -1,3 +1,44 @@
+<#
+.SYNOPSIS
+This script updates the password of a service account on a specified endpoint and optionally restarts the service.
+
+.DESCRIPTION
+The script connects to a remote server using provided credentials and changes the password stored for the service(s). 
+It supports validation of the new password against the account and can restart the services upon successful password update.
+
+.PARAMETER Endpoint
+Specifies the target endpoint (server) where the service account password needs to be updated.
+
+.PARAMETER EndpointUserName
+Specifies the username used to authenticate to the endpoint. This should have adequate permissions to manage services and 
+accounts on the target server.
+
+.PARAMETER EndpointPassword
+Specifies the secure password for the EndpointUserName. This must be a SecureString to ensure security during transmission.
+
+.PARAMETER AccountUserName
+Specifies the service account username whose password needs updating. It can be in 'user@domain', 'domain\user', or 'user' format.
+
+.PARAMETER NewPassword
+Specifies the new password for the service account. This must be a SecureString to ensure it is handled securely.
+
+.PARAMETER ServiceName
+Optional. Specifies the service(s) associated with the account. Multiple services can be specified, separated by commas. 
+If omitted, the script will attempt to update the account password for all services running under the specified account.
+
+.PARAMETER RestartService
+Optional. Specifies whether to restart the service after updating the password. Acceptable values are 'yes' or 
+'' (empty string for no). Default is no restart.
+
+.EXAMPLE
+.\script.ps1 -Endpoint "Server01" -EndpointUserName "admin" -EndpointPassword (ConvertTo-SecureString "Password123" -AsPlainText -Force) -AccountUserName "serviceaccount" -NewPassword (ConvertTo-SecureString "NewPassword123" -AsPlainText -Force) -ServiceName "Service01,Service02" -RestartService "yes"
+
+This example updates the password for 'serviceaccount' on 'Server01' for 'Service01' and 'Service02', then restarts those services.
+
+.NOTES
+Make sure that the user running this script has appropriate permissions on the remote system to manage services and user accounts.
+Ensure that the network policies and firewall settings allow remote management and service manipulation commands.
+#>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
