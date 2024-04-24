@@ -106,6 +106,33 @@ function runPwshAs([pscredential]$Credential, [scriptblock]$Code) {
         }
     },
     @{
+        'Name'           = 'SQL Server authentication is enabled'
+        'Command'        = {
+            try {
+                $connection = New-Object System.Data.SqlClient.SqlConnection
+                $connection.ConnectionString = "Server=$Endpoint\$InstanceName,$Port;Database=master;User ID=$($SqlLoginCredential.UserName);Password=$(decryptPassword($SqlLoginCredential.Password));"
+                $connection.Open()
+
+                $command = $connection.CreateCommand()
+                $command.CommandText = "SELECT SERVERPROPERTY('IsIntegratedSecurityOnly')"
+                
+                $command.ExecuteScalar() -eq 0
+
+            } catch {
+                $errMsg = $_.Exception.Message
+            } finally {
+                $connection.Close()
+            }
+
+            [pscustomobject]@{
+                'ErrorMessage' = $errMsg
+                'Result'       = !$errMsg
+            }
+            
+        }
+        'ParametersUsed' = @('SqlLoginCredential')
+    },
+    @{
         'Name'           = 'the provider SQL login UserName can authenticate to the SQL server'
         'Command'        = {
             try {
