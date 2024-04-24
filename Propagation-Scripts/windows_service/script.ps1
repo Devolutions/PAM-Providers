@@ -126,18 +126,24 @@ $scriptBlock = {
     }
 
     function GetServiceAccountName ($User) {
-    
-        if ($User.Domain -eq '.') {
-            $accountName = "$($User.Domain)\$($User.Username)"
-        } else {
-            $fqdnDomain = (Get-CimInstance -Class Win32_ComputerSystem).Domain
-            if ($fqdnDomain.split('.')[0] -ne $User.Domain) {
-                throw "Could not determine the domain. Use a UPN (username@domain.local) for a more specific match."
-            }
-            $accountName = "$($User.Username)@$fqdnDomain"
-        }
 
-        $accountName
+        switch -Regex ($User.Domain) {
+            '^\.$' {
+                 "$($User.Domain)\$($User.Username)"
+                 break
+            }
+            '^\w+\.\w+$' {
+                "$($User.Username)@$($User.Domain)"
+                break
+            }
+            default {
+                $fqdnDomain = (Get-CimInstance -Class Win32_ComputerSystem).Domain
+                if ($fqdnDomain.split('.')[0] -ne $_) {
+                    throw "Could not determine the domain. Use a UPN (username@domain.local) for the AccountUserName parameter."
+                }
+                "$($User.Username)@$fqdnDomain"
+            }
+        }
     }
 
     function ValidateUserAccountPassword {
@@ -187,9 +193,9 @@ $scriptBlock = {
     $serviceAccountName = GetServiceAccountName($user)
 
     if (-not $serviceNames) {
-        $cimFilter = "StartName='$serviceAccountName'"
+        $cimFilter = "StartName='$serviceAccountName' OR StartName = '$($user.Domain)\$($user.UserName)'"
     } else {
-        $cimFilter = "(Name='{0}') AND StartName='{1}'" -f ($serviceNames -join "' OR Name='"), $serviceAccountName
+        $cimFilter = "(Name='{0}') AND (StartName={1})" -f ($serviceNames -join "' OR Name='"), "'$serviceAccountName' OR StartName = '$($user.Domain)\$($user.UserName)'"
     }
     $cimFilter = $cimFilter.replace('\', '\\')
 
