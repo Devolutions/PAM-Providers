@@ -60,7 +60,7 @@ function decryptPassword([securestring]$Password) {
 }
 
 function runPwshAs([pscredential]$Credential, [scriptblock]$Code) {
-    
+
     $psFilePath = (Get-Process -Id $PID).Path
 
     $processInfo = New-Object System.Diagnostics.ProcessStartInfo
@@ -75,6 +75,12 @@ function runPwshAs([pscredential]$Credential, [scriptblock]$Code) {
     $processInfo.Password = $Credential.Password
 
     $credDomain = $Credential.GetNetworkCredential().Domain
+
+    $processInfo.UserName = $cred.GetNetworkCredential().UserName
+    $processInfo.Password = $cred.Password
+
+    $credDomain = $cred.GetNetworkCredential().Domain
+
     if ($credDomain) {
         $processInfo.Domain = $credDomain
     } else {
@@ -250,6 +256,7 @@ function runPwshAs([pscredential]$Credential, [scriptblock]$Code) {
     }
 )
 
+
 $applicableTests = $tests.where({ $paramsUsed = $_.ParametersUsed; !$_.ContainsKey('ParametersUsed') -or $PSBoundParameters.Keys.where({ $_ -in $paramsUsed }) })
 
 [array]$passedTests = foreach ($test in $applicableTests) {
@@ -260,8 +267,6 @@ $applicableTests = $tests.where({ $paramsUsed = $_.ParametersUsed; !$_.ContainsK
         1
     }
 }
-
-$foo = ''
 
 if ($passedTests.Count -eq $applicableTests.Count) {
     Write-Host "All tests have passed. You're good to go!" -ForegroundColor Green
