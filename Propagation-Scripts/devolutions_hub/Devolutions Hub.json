@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "template": {
+    "command": "    [CmdletBinding()]\n    Param (\n      [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$NewPassword,\n      [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$DevolutionsHubUrl,\n      [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$ApplicationKey,\n      [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$ApplicationSecret,\n      [Parameter(Mandatory = $False)][String]$VaultId,\n      [Parameter(Mandatory = $False)][String]$VaultName,\n      [Parameter(Mandatory = $False)][String]$RunAsAccount,\n      [Parameter(Mandatory = $False)][SecureString]$RunAsPassword,\n      [Parameter(Mandatory = $False)][String]$PSSessionConfigurationName,\n      [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$EntryName    )\n\n    Try {\n        $ConfigurationName = 'PowerShell.7'\n        If ($PSSessionConfigurationName) {\n            $ConfigurationName = $PSSessionConfigurationName\n        }\n\n        If ($RunAsAccount -And $RunAsPassword) {\n            $RunAsCredential = New-Object System.Management.Automation.PSCredential($RunAsAccount, $RunAsPassword)\n\n            $Session = New-PSSession -ComputerName localhost -ConfigurationName $ConfigurationName -Credential $RunAsCredential -ErrorAction 'Stop'\n        } Else {\n            $Session = New-PSSession -ComputerName localhost -ConfigurationName $ConfigurationName -ErrorAction 'Stop'\n        }\n    } Catch {\n    Write-Error (\"Failed to Open Remote Session: {0}\" -F $PSItem[0].Exception.Message)\n    }\n\n    $Params = @{\n        \"Session\" = $Session\n        \"ScriptBlock\" = {\n            Import-Module -Name Devolutions.PowerShell\n            \n            $ApplicationSecretNonSecure = ConvertFrom-SecureString $Using:ApplicationSecret -AsPlainText\n            Connect-HubAccount -Url $Using:DevolutionsHubUrl -ApplicationKey $Using:ApplicationKey -ApplicationSecret $ApplicationSecretNonSecure\n\n            if ($Using:VaultId) {\n                $Vault = Get-HubVault -VaultId $Using:VaultId\n            }\n            else {\n                $Vault = Get-HubVault | Where-Object { $_.Name -eq $Using:VaultName }\n            }\n\n            if (-not $Vault) {\n                Write-Error \"Vault can't be found.\"\n            }\n\n            $HubEntry = Get-HubEntry -VaultId $Vault.ID | Where-Object { $_.PsMetadata.Name -eq $Using:EntryName }\n\n            if ($HubEntry) {\n                if ($HubEntry.Connection.ConnectionType -eq 'Credential') {\n                    $HubEntry.Connection.Credentials.Password = ConvertFrom-SecureString $Using:NewPassword -AsPlainText\n                    Set-HubEntry -VaultId $Vault.ID -EntryId $HubEntry.Connection.ID -PSDecryptedEntry $HubEntry\n                } else {\n                    Write-Error \"Invalid entry type. Only credentials are supported.\"\n                }\n            } else {\n                Write-Error \"Entry $Using:EntryName can't be found.\"\n            }\n        }\n        \"ErrorAction\" = 'Stop'\n    }\n\n    Try {\n        Invoke-Command @Params\n    } Catch {\n        Write-Error (\"Failed to Run script: {0}\" -F $PSItem[0].Exception.Message)\n    } Finally {\n        $Session | Remove-PSSession\n    }",
+    "configurationProperties": [
+      {
+        "id": "93a1bbf2-1e09-4b14-927e-946d31149c0b",
+        "isMandatory": true,
+        "name": "DevolutionsHubUrl"
+      },
+      {
+        "id": "105a62c2-1f58-43b4-8b37-213116c27867",
+        "isMandatory": true,
+        "name": "ApplicationKey"
+      },
+      {
+        "id": "c38e5a96-7388-4310-8b0f-06ae0e08e00b",
+        "isMandatory": true,
+        "name": "ApplicationSecret",
+        "type": 5
+      },
+      {
+        "id": "e9aabed7-82bc-4e8d-999d-d2f494f517fb",
+        "name": "VaultId"
+      },
+      {
+        "id": "04cdf68a-b645-46bb-959a-cc3c0d3bfd65",
+        "name": "VaultName"
+      },
+      {
+        "id": "89af43f5-aa72-4fec-b03c-cd399baa7906",
+        "name": "RunAsAccount"
+      },
+      {
+        "id": "0e4e1c9a-2785-43ef-b2b1-30dc186ad82f",
+        "name": "RunAsPassword",
+        "type": 5
+      },
+      {
+        "id": "67866d6d-ce5d-4b7a-ab38-d01d02a66885",
+        "name": "PSSessionConfigurationName"
+      }
+    ],
+    "description": "Propagate your privileged account rotated password to a secret on a Devolutions Hub",
+    "executionProperties": [
+      {
+        "id": "3dc74625-11e0-4c5b-80ef-8cd21da7798b",
+        "isMandatory": true,
+        "name": "EntryName",
+        "type": 8
+      }
+    ],
+    "id": "20fa1e9c-8bc6-4c03-8807-cd626b13fc01",
+    "imageBytes": "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",
+    "name": "Devolutions Hub"
+  }
+}
