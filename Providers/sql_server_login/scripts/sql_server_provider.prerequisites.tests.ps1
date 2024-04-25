@@ -246,6 +246,17 @@ $applicableTests = $tests.where({ $paramsUsed = $_.ParametersUsed; !$_.ContainsK
     } else {
         1
     }
+)
+
+$applicableTests = $tests.where({ $paramsUsed = $_.ParametersUsed; !$_.ContainsKey('ParametersUsed') -or $PSBoundParameters.Keys.where({ $_ -in $paramsUsed })})
+
+[array]$passedTests = foreach ($test in $applicableTests) {
+    $result = & $test.Command
+    if (-not $result.Result) {
+        Write-Error -Message "The test [$($test.Name)] failed: [$($result.ErrorMessage)]"
+    } else {
+        1
+    }
 }
 
 if ($passedTests.Count -eq $applicableTests.Count) {
