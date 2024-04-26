@@ -71,10 +71,11 @@ function runPwshAs([pscredential]$Credential, [scriptblock]$Code) {
     $processInfo.LoadUserProfile = $false
     $processInfo.RedirectStandardError = $true
     $processInfo.CreateNoWindow = $true
-    $processInfo.UserName = $cred.GetNetworkCredential().UserName
-    $processInfo.Password = $cred.Password
+    $processInfo.UserName = $Credential.GetNetworkCredential().UserName
+    $processInfo.Password = $Credential.Password
 
-    $credDomain = $cred.GetNetworkCredential().Domain
+    $credDomain = $Credential.GetNetworkCredential().Domain
+
     if ($credDomain) {
         $processInfo.Domain = $credDomain
     } else {
@@ -191,13 +192,19 @@ function runPwshAs([pscredential]$Credential, [scriptblock]$Code) {
                 $connection.Close()
             }
 
-            $process = runPwshAs $WindowsAccountCredential $testCode
+            try {
+                $ErrorActionPreference = 'Stop'
+                
+                $process = runPwshAs $WindowsAccountCredential $testCode
 
-            $stdError = $process.StandardError.ReadToEnd()
-
-            [pscustomobject]@{
-                'ErrorMessage' = $stdError
-                'Result'       = !$stdError
+                $errMsg = $process.StandardError.ReadToEnd()
+            } catch {
+                $errMsg = $_.Exception.Message
+            } finally {
+                [pscustomobject]@{
+                    'ErrorMessage' = $errMsg
+                    'Result'       = !$errMsg
+                }
             }
         }
         'ParametersUsed' = @('WindowsAccountCredential')
@@ -216,28 +223,36 @@ function runPwshAs([pscredential]$Credential, [scriptblock]$Code) {
                     $command = $connection.CreateCommand()
                     $command.CommandText = "SELECT CASE WHEN IS_SRVROLEMEMBER('sysadmin') = 1 OR IS_SRVROLEMEMBER('securityadmin') = 1 OR IS_ROLEMEMBER('db_owner') = 1 THEN 1 ELSE 0 END"
             
-                    $command.ExecuteScalar() | Should -Be 1
+                    $command.ExecuteScalar() -eq 1
                     $connection.Close()
                 } catch {
                     Write-Output 'inconclusive'
                 }
             }
 
-            $process = runPwshAs $WindowsAccountCredential $testCode
+            try {
+                $ErrorActionPreference = 'Stop'
 
-            $stdError = $process.StandardError.ReadToEnd()
-            $stdOutput = $process.StandardOutput.ReadToEnd()
+                $process = runPwshAs $WindowsAccountCredential $testCode
 
-            [pscustomobject]@{
-                'ErrorMessage' = $stdError
-                'Result'       = (!$stdOutput -and !$stdError)
+                $errMsg = $process.StandardError.ReadToEnd()
+                $result = $process.StandardOutput.ReadToEnd()
+
+            } catch {
+                $errMsg = $_.Exception.Message
+            } finally {
+                [pscustomobject]@{
+                    'ErrorMessage' = $errMsg
+                    'Result'       = $result
+                }
             }
         }
         'ParametersUsed' = @('WindowsAccountCredential')
     }
 )
 
-$applicableTests = $tests.where({ $paramsUsed = $_.ParametersUsed; !$_.ContainsKey('ParametersUsed') -or $PSBoundParameters.Keys.where({ $_ -in $paramsUsed })})
+
+$applicableTests = $tests.where({ $paramsUsed = $_.ParametersUsed; !$_.ContainsKey('ParametersUsed') -or $PSBoundParameters.Keys.where({ $_ -in $paramsUsed }) })
 
 [array]$passedTests = foreach ($test in $applicableTests) {
     $result = & $test.Command

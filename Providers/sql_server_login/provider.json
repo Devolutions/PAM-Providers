@@ -1,149 +1,154 @@
 {
-  "version": 1,
-  "template": {
-    "id": "6e2aa14f-aef0-48ce-8a47-606f82d65bc3",
-    "name": "Azure Key Vault",
-    "description": "",
-    "imageName": "SampleAzureKeyVaultBlue",
-    "providerProperties": [
-      {
-        "id": "f8c6aa95-0afa-4f65-97f3-d6d0bb37b801",
-        "name": "TenantID",
-        "isMandatory": true
+    "version": 1,
+    "template": {
+      "accountProperties": [
+        {
+          "id": "54b6d680-0b89-4ce6-a512-bc98e0008fd7",
+          "name": "ID",
+          "type": 6
+        },
+        {
+          "id": "c24049c5-9ec4-4f26-832c-86f283067c73",
+          "isMandatory": true,
+          "name": "Username",
+          "type": 4
+        },
+        {
+          "id": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
+          "isMandatory": true,
+          "name": "Secret",
+          "type": 3
+        }
+      ],
+      "commands": {
+        "heartbeat": {
+          "command": "<#\n.SYNOPSIS\nValidates if a secret matches the password hash for a SQL Server login.\n\n.DESCRIPTION\nThis script retrieves the password hash for the specified SQL Server login and compares it against the provided secret to validate if they match.\nReturns true if the password hashes match, false otherwise.\n\n.PARAMETER Secret\nThe secret to compare to the login's password hash.\n\n.PARAMETER Username \nThe SQL Server login to retrieve the password hash for.\n\n.PARAMETER Server\nThe SQL Server instance to connect to.\n\n.PARAMETER Instance\nThe name of the SQL Server instance to connect to. Default is the default instance.\n\n.PARAMETER ProviderSqlLoginUsername\nThe SQL login to use when authenticating to SQL Server. Uses Windows authentication if not specified.\n\n.PARAMETER ProviderSqlLoginPassword \nThe password for the provider SQL login. Must be a secure string.  \n\n.PARAMETER Port  \nThe TCP port to connect to SQL Server on. Default is 1433.\n\n.EXAMPLE \nPS> .\\Validate-SqlLoginHash.ps1 -Secret $hashedPassword -Username sqluser -Server sqlserver\n\nValidates if the $hashedPassword matches the hash for the sqluser login on the sqlserver default instance.\n\n.NOTES\nThis script executes T-SQL directly so permission requirements are based on the SQL Server permissions of the account used to run it.\n#>\n[CmdletBinding()]\nParam (\n    [Parameter(Mandatory)]\n    [string]$Secret,\n\n    [Parameter(Mandatory)]\n    [string]$Username,\n\n    [Parameter(Mandatory)]\n    [string]$Server,\n\n    [Parameter()]\n    [string]$Instance,\n\n    [Parameter()]\n    [string]$ProviderSqlLoginUsername,\n\n    [Parameter()]\n    $ProviderSqlLoginPassword,\n\n    [Parameter()]\n    [int]$Port\n)\n\n$ErrorActionPreference = 'Stop'\n\n## Define optional default parameter values. We can't use PowerShell parameter defaults because if you set up a property in\n## in DVLS and don't provide a value, DVLS will still use the parameter just pass an empty string\nif (!$Instance) { $Instance = '.' }\nif (!$Port) { $Port = 1433 }\nif ($ProviderSqlLoginPassword -and $ProviderSqlLoginPassword.GetType().Name -ne 'securestring') {\n    throw \"The provider SQL login password must be a secure string.\"\n}\n\nfunction decryptPassword {\n    param(\n        [securestring]$Password\n    )\n    try {\n        $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)\n        [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)\n    } finally {\n        ## Clear the decrypted password from memory\n        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)\n    }\n}\n\nfunction newConnectionString {\n    $connectionStringItems = @{\n        'Database' = 'master'\n        'Server'   = \"$Server\\$Instance,$Port\"\n    }\n    if ($ProviderSqlLoginUsername -and $ProviderSqlLoginPassword) {\n        ## Using SQL login to authenticate\n        $connectionStringItems += @{\n            'User ID'  = $ProviderSqlLoginUsername\n            'Password' = decryptPassword($ProviderSqlLoginPassword)\n        }\n    } else {\n        ## using the currently logged in user via Windows auth to authenticate\n        $connectionStringItems += @{\n            'Integrated Security' = 'True'\n        }\n    }\n    ($connectionStringItems.GetEnumerator() | ForEach-Object { \"$($_.Key)=$($_.Value)\" }) -join \";\"\n}\n\nfunction invokeSqlQuery {\n    param(\n        [string]$Query,\n        [string]$ConnectionString\n    )\n    try {\n        # Create a SQL connection\n        $connection = New-Object System.Data.SqlClient.SqlConnection $ConnectionString\n\n        # # Open the connection\n        $connection.Open()\n\n        # Execute the query\n        $command = $connection.CreateCommand()\n        $command.CommandText = $Query\n\n        # Execute the command and process the results\n        $reader = $command.ExecuteReader()\n        while ($reader.Read()) {\n            [PSCustomObject]@{\n                'name'          = $reader['name']\n                'password_hash' = ($reader['password_hash'] -join '')\n            }\n        }\n    } finally {\n        ## Close the connection and clean up\n        if ($connection) { \n            $connection.Close()\n        }\n        if ($reader) {\n            $reader.Close()\n        }\n    }\n}\n\ntry {\n    \n    $connectionString = newConnectionString\n    \n    $sqlLoginResult = invokeSqlQuery -Query \"SELECT name, password_hash FROM sys.sql_logins WHERE name = '$Username'\" -ConnectionString $connectionString\n    ($sqlLoginResult.password_hash -join '') -eq $Secret\n        \n} catch {\n    $PSCmdlet.ThrowTerminatingError($_)\n}",
+          "commandType": 1,
+          "id": "ea6b32c1-06b9-400d-bc5e-464e5f0e4b69",
+          "isActive": true,
+          "parameters": [
+            {
+              "name": "ProviderSqlLoginUsername",
+              "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73"
+            },
+            {
+              "name": "ProviderSqlLoginPassword",
+              "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
+            },
+            {
+              "name": "Server",
+              "propertyId": "572cf7d5-43bd-4a46-8b6d-772f9b14f164"
+            },
+            {
+              "name": "Secret",
+              "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
+              "source": 1
+            },
+            {
+              "name": "Username",
+              "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73",
+              "source": 1
+            },
+            {
+              "name": "Port",
+              "propertyId": "919c5d8d-ccd0-4d7e-9ed6-fd49f1621408"
+            },
+            {
+              "name": "Instance",
+              "propertyId": "44c1e508-7102-4cf4-8218-a64f13d19893"
+            }
+          ]
+        },
+        "resetPassword": {
+          "command": "<#\n.SYNOPSIS\nChanges the password for a SQL Server login.\n\n.DESCRIPTION\nThis script changes the password for the specified SQL Server login by executing an ALTER LOGIN statement. \n\n.PARAMETER Username\nThe name of the SQL Server login to change the password for.\n\n.PARAMETER NewPassword\nThe new password to set for the SQL Server login. Must be a secure string.\n\n.PARAMETER Server\nThe name of the SQL Server to connect to.\n\n.PARAMETER Instance\nThe name of the SQL Server instance to connect to. Default is the default instance.\n\n.PARAMETER ProviderSqlLoginUsername\nThe SQL login to use when authenticating to SQL Server. Uses Windows authentication if not specified.\n\n.PARAMETER ProviderSqlLoginPassword  \nThe password for the provider SQL login. Must be a secure string.\n\n.PARAMETER Port\nThe TCP port to connect to SQL Server on. Default is 1433.\n\n.EXAMPLE \nPS> .\\Set-SqlLoginPassword.ps1 -Username sqluser -NewPassword $password -Server sqlserver\n\nChanges the password for the sqluser login on the default instance of the sqlserver SQL Server using Windows authentication.\n\n.NOTES\nThis script executes T-SQL directly so permission requirements are based on the SQL Server permissions of the account used to run it rather than the PowerShell process account.\n#>\n\n[CmdletBinding()]\nParam (\n    [Parameter(Mandatory)]\n    [string]$Username,\n\n    [Parameter(Mandatory)]\n    $NewPassword,\n\n    [Parameter(Mandatory)]\n    [string]$Server,\n\n    [Parameter()]\n    [string]$Instance,\n\n    [Parameter()]\n    [string]$ProviderSqlLoginUsername,\n\n    [Parameter()]\n    $ProviderSqlLoginPassword,\n\n    [Parameter()]\n    [int]$Port\n)\n\n$ErrorActionPreference = 'Stop'\n\n## Define optional default parameter values. We can't use PowerShell parameter defaults because if you set up a property in\n## in DVLS and don't provide a value, DVLS will still use the parameter just pass an empty string\nif (!$Instance) { $Instance = '.'}\nif (!$Port) { $Port = 1433 }\nif ($ProviderSqlLoginPassword -and $ProviderSqlLoginPassword.GetType().Name -ne 'securestring') {\n    throw \"The provider SQL login password must be a secure string.\"\n}\nif ($NewPassword -and $NewPassword.GetType().Name -ne 'securestring') {\n    throw \"The new password must be a secure string.\"\n}\n\n\nfunction decryptPassword {\n    param(\n        [securestring]$Password\n    )\n    try {\n        $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)\n        [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)\n    } finally {\n        ## Clear the decrypted password from memory\n        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)\n    }\n}\n\nfunction newConnectionString {\n    $connectionStringItems = @{\n        'Database' = 'master'\n        'Server'   = \"$Server\\$Instance,$Port\"\n    }\n    if ($ProviderSqlLoginUsername -and $ProviderSqlLoginPassword) {\n        ## Using SQL login to authenticate\n        $connectionStringItems += @{\n            'User ID'  = $ProviderSqlLoginUsername\n            'Password' = decryptPassword($ProviderSqlLoginPassword)\n        }\n    } else {\n        ## using the currently logged in user via Windows auth to authenticate\n        $connectionStringItems += @{\n            'Integrated Security' = 'True'\n        }\n    }\n    ($connectionStringItems.GetEnumerator() | ForEach-Object { \"$($_.Key)=$($_.Value)\" }) -join \";\"\n}\n\nfunction invokeSqlQuery {\n    param(\n        [string]$Query,\n        [string]$ConnectionString\n    )\n    try {\n        # Create a SQL connection\n        $connection = New-Object System.Data.SqlClient.SqlConnection $ConnectionString\n\n        # # Open the connection\n        $connection.Open()\n\n        # Execute the query\n        $command = $connection.CreateCommand()\n        $command.CommandText = $Query\n\n        # Execute the command and process the results\n        $command.ExecuteReader()\n    } finally {\n        ## Close the connection and clean up\n        if ($connection) { \n            $connection.Close()\n        }\n        if ($reader) {\n            $reader.Close()\n        }\n    }\n}\n\ntry {\n    \n    $connectionString = newConnectionString\n    \n    invokeSqlQuery -Query \"ALTER LOGIN [$Username] WITH PASSWORD = '$(decryptPassword($NewPassword))';\" -ConnectionString $connectionString\n    $true\n\n} catch {\n    $PSCmdlet.ThrowTerminatingError($_)\n}",
+          "id": "c9ce78ad-a400-40f4-81f4-481851142319",
+          "isActive": true,
+          "parameters": [
+            {
+              "name": "Username",
+              "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73",
+              "source": 1
+            },
+            {
+              "name": "Server",
+              "propertyId": "572cf7d5-43bd-4a46-8b6d-772f9b14f164"
+            },
+            {
+              "name": "ProviderSqlLoginUsername",
+              "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73"
+            },
+            {
+              "name": "ProviderSqlLoginPassword",
+              "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
+            },
+            {
+              "name": "Port",
+              "propertyId": "919c5d8d-ccd0-4d7e-9ed6-fd49f1621408"
+            },
+            {
+              "name": "Instance",
+              "propertyId": "44c1e508-7102-4cf4-8218-a64f13d19893"
+            }
+          ]
+        },
+        "accountDiscovery": {
+          "command": "<#\n.SYNOPSIS\nChanges the password for a specified SQL Server login.\n\n.DESCRIPTION\nThis script updates the password for a given SQL Server login using a secure connection. It supports both SQL Server and Windows authentication methods. Optional parameters allow specifying the SQL Server instance, port, and credentials for SQL Server authentication.\n\n.PARAMETER Username\nThe username of the SQL Server login whose password needs to be updated.\n\n.PARAMETER NewPassword\nThe new password for the SQL Server login. This parameter should be a secure string.\n\n.PARAMETER Server\nThe name or IP address of the SQL Server.\n\n.PARAMETER Instance\nThe instance of SQL Server to connect to. Defaults to the default instance if not specified.\n\n.PARAMETER ProviderSqlLoginUsername\nThe username for SQL Server authentication. If not specified, Windows authentication is used.\n\n.PARAMETER ProviderSqlLoginPassword\nThe password for SQL Server authentication. This parameter should be a secure string. Required if ProviderSqlLoginUsername is specified.\n\n.PARAMETER Port\nThe port number for the SQL Server. Defaults to 1433 if not specified.\n\n.EXAMPLE\nPS> .\\YourScriptName.ps1 -Username 'myUser' -NewPassword (ConvertTo-SecureString -AsPlainText \"newPassword\" -Force) -Server 'localhost'\n\nThis example changes the password for 'myUser' on the default SQL Server instance running on 'localhost' using Windows authentication.\n\n.EXAMPLE\nPS> .\\YourScriptName.ps1 -Username 'myUser' -NewPassword (ConvertTo-SecureString -AsPlainText \"newPassword\" -Force) -Server 'myServer' -Instance 'myInstance' -ProviderSqlLoginUsername 'admin' -ProviderSqlLoginPassword (ConvertTo-SecureString -AsPlainText \"adminPassword\" -Force) -Port 1433\n\nThis example changes the password for 'myUser' on a specified instance of SQL Server using SQL Server authentication.\n\n.NOTES\nEnsure that the NewPassword and ProviderSqlLoginPassword parameters are passed as secure strings to maintain security best practices.\n\n.LINK\nURL to more information, if available\n\n#>\n[CmdletBinding()]\n[OutputType([System.Management.Automation.PSCustomObject])]\nParam (\n    [Parameter(Mandatory)]\n    [string]$Server,\n\n    [Parameter()]\n    [string]$Instance,\n\n    [Parameter()]\n    [string]$ProviderSqlLoginUsername,\n\n    [Parameter()]\n    $ProviderSqlLoginPassword, ## purposeful no explicit type here to allow DVLS to pass an empty string\n\n    [Parameter()]\n    [int]$Port\n)\n\n$ErrorActionPreference = 'Stop'\n\n## Define optional default parameter values. We can't use PowerShell parameter defaults because if you set up a property in\n## in DVLS and don't provide a value, DVLS will still use the parameter just pass an empty string\nif (!$Instance) { $Instance = '.' }\nif (!$Port) { $Port = 1433 }\nif ($ProviderSqlLoginPassword -and $ProviderSqlLoginPassword.GetType().Name -ne 'securestring') {\n    throw \"The provider SQL login password must be a secure string.\"\n}\n\nfunction decryptPassword {\n    param(\n        [securestring]$Password\n    )\n    try {\n        $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)\n        [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)\n    } finally {\n        ## Clear the decrypted password from memory\n        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)\n    }\n}\n\nfunction newConnectionString {\n    $connectionStringItems = @{\n        'Database' = 'master'\n        'Server'   = \"$Server\\$Instance,$Port\"\n    }\n    if ($ProviderSqlLoginUsername -and $ProviderSqlLoginPassword) {\n        ## Using SQL login to authenticate\n        $connectionStringItems += @{\n            'User ID'  = $ProviderSqlLoginUsername\n            'Password' = decryptPassword($ProviderSqlLoginPassword)\n        }\n    } else {\n        ## using the currently logged in user via Windows auth to authenticate\n        $connectionStringItems += @{\n            'Integrated Security' = 'True'\n        }\n    }\n    ($connectionStringItems.GetEnumerator() | ForEach-Object { \"$($_.Key)=$($_.Value)\" }) -join \";\"\n}\n\nfunction invokeSqlQuery {\n    param(\n        [string]$Query,\n        [string]$ConnectionString\n    )\n    try {\n        # Create a SQL connection\n        $connection = New-Object System.Data.SqlClient.SqlConnection $ConnectionString\n\n        # # Open the connection\n        $connection.Open()\n\n        # Execute the query\n        $command = $connection.CreateCommand()\n        $command.CommandText = $Query\n\n        # Execute the command and process the results\n        $reader = $command.ExecuteReader()\n        while ($reader.Read()) {\n            [PSCustomObject]@{\n                'name'          = $reader['name']\n                'password_hash' = ($reader['password_hash'] -join '')\n            }\n        }\n    } finally {\n        ## Close the connection and clean up\n        if ($connection) { \n            $connection.Close()\n        }\n        if ($reader) {\n            $reader.Close()\n        }\n    }\n}\n\ntry {\n\n    $connectionString = newConnectionString\n\n    $selectProps = @(\n        @{'n' = 'id'; e = { $_.name } }\n        @{'n' = 'username'; e = { $_.name } }\n        @{'n' = 'secret'; e = { ($_.password_hash -join '') } }\n    )\n\n    invokeSqlQuery -Query \"SELECT name, password_hash FROM sys.sql_logins;\" -ConnectionString $connectionString | Select-Object -Property $selectProps\n    \n} catch {\n    $PSCmdlet.ThrowTerminatingError($_)\n}",
+          "commandType": 2,
+          "id": "813c0aef-83af-40c4-bffe-b240f5190cc6",
+          "isActive": true,
+          "parameters": [
+            {
+              "name": "ProviderSQLLoginUsername",
+              "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73"
+            },
+            {
+              "name": "ProviderSQLLoginPassword",
+              "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
+            },
+            {
+              "name": "Server",
+              "propertyId": "572cf7d5-43bd-4a46-8b6d-772f9b14f164"
+            },
+            {
+              "name": "Port",
+              "propertyId": "919c5d8d-ccd0-4d7e-9ed6-fd49f1621408"
+            },
+            {
+              "name": "Instance",
+              "propertyId": "44c1e508-7102-4cf4-8218-a64f13d19893"
+            }
+          ]
+        }
       },
-      {
-        "id": "c7e1e64e-e2b3-4cc6-ae4e-1807be879378",
-        "name": "ApplicationID",
-        "isMandatory": true
-      },
-      {
-        "id": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
-        "name": "Password",
-        "type": 3,
-        "isMandatory": true
-      },
-      {
-        "id": "65001f49-e792-4e01-992f-5a4982e38ec0",
-        "name": "KeyVaultName",
-        "isMandatory": true
-      }
-    ],
-    "accountProperties": [
-      {
-        "id": "c24049c5-9ec4-4f26-832c-86f283067c73",
-        "name": "Name",
-        "type": 4,
-        "isMandatory": true
-      },
-      {
-        "id": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
-        "name": "Secret",
-        "type": 3
-      },
-      {
-        "id": "54b6d680-0b89-4ce6-a512-bc98e0008fd7",
-        "name": "ID",
-        "type": 6,
-        "isMandatory": true
-      }
-    ],
-    "commands": {
-      "accountDiscovery": {
-        "id": "3945e46e-39e2-4872-80b9-30fe8f6a77fc",
-        "isActive": true,
-        "parameters": [
-          {
-            "name": "TenantID",
-            "propertyId": "f8c6aa95-0afa-4f65-97f3-d6d0bb37b801"
-          },
-          {
-            "name": "ApplicationID",
-            "propertyId": "c7e1e64e-e2b3-4cc6-ae4e-1807be879378"
-          },
-          {
-            "name": "Password",
-            "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
-          },
-          {
-            "name": "KeyVaultName",
-            "propertyId": "65001f49-e792-4e01-992f-5a4982e38ec0"
-          }
-        ],
-        "command": "[CmdletBinding()]\nParam (\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$TenantID,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$ApplicationID,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$Password,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$KeyVaultName\n)\n\n[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12\n\nIf ((Get-ExecutionPolicy) -NE 'RemoteSigned' -Or (Get-ExecutionPolicy) -NE 'Unrestricted') {\n  Set-ExecutionPolicy 'RemoteSigned' -Scope 'Process'\n}\n\n$ModulesToImport = @{\n  'Az.Accounts' = '2.10.3'\n  'Az.KeyVault' = '4.9.0'\n}\n\n# If your minimum version is older, run Update-Module -Name 'Az'\n$ModulesToImport.GetEnumerator() | ForEach-Object {\n  Try {\n    Import-Module -Name $PSItem.Key -MinimumVersion $PSItem.Value -ErrorAction 'Stop'\n  } Catch {\n    Write-Error (\"Failed to Import Module: {0}\" -F $Error[0].Exception.ToString())\n    Exit\n  }\n}\n\n\n$Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $ApplicationID, $Password\n\nTry {\n  $Account = Connect-AzAccount -ServicePrincipal -TenantId $TenantId -Credential $Credential -ErrorAction 'Stop'\n} Catch {\n  Write-Error (\"Failed to Connect to Azure: {0}\" -F $Error[0].Exception.ToString())\n  Exit\n}\n\nTry {\n  $Vault = Get-AzKeyVault -VaultName $KeyVaultName -ErrorAction 'Stop'\n} Catch {\n  Write-Error (\"Failed to Retrieve Key Vault: {0}\" -F $Error[0].Exception.ToString())\n  Exit\n}\n\nIf ($Vault) {\n  Try {\n    $Secrets = $Vault | Get-AzKeyVaultSecret\n  } Catch {\n    Write-Error (\"Failed to Retrieve Secrets: {0}\" -F $Error[0].Exception.ToString())\n  }\n\n  If ($Secrets) {\n    $ParsedSecrets = $Secrets | ForEach-Object {\n      Try {\n        $Secret = $Vault | Get-AzKeyVaultSecret -Name $PSItem.Name -AsPlainText -ErrorAction 'Stop'\n      } Catch {\n        Write-Error (\"Failed to Retrieve Secret: {0}\" -F $Error[0].Exception.ToString())\n      }\n\n      If ($Secret) {\n        [PSCustomObject]@{\n          'ID'     = $PSItem.Id\n          'Name'   = $PSItem.Name\n          'Secret' = $Secret\n        }\n      } \n    }\n\n    Return $ParsedSecrets\n  } Else {\n    Write-Error \"No Secrets Found\"\n  }\n} Else {\n  Write-Error \"Key Vault not Found\"\n}",
-        "commandType": 2
-      },
-      "resetPassword": {
-        "id": "748474e8-af3f-4115-b021-aa445a005797",
-        "isActive": true,
-        "parameters": [
-          {
-            "name": "TenantID",
-            "propertyId": "f8c6aa95-0afa-4f65-97f3-d6d0bb37b801"
-          },
-          {
-            "name": "ApplicationID",
-            "propertyId": "c7e1e64e-e2b3-4cc6-ae4e-1807be879378"
-          },
-          {
-            "name": "Password",
-            "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
-          },
-          {
-            "name": "KeyVaultName",
-            "propertyId": "65001f49-e792-4e01-992f-5a4982e38ec0"
-          },
-          {
-            "name": "Name",
-            "source": 1,
-            "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73"
-          },
-          {
-            "name": "ID",
-            "source": 1,
-            "propertyId": "54b6d680-0b89-4ce6-a512-bc98e0008fd7"
-          }
-        ],
-        "command": "[CmdletBinding()]\nParam (\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$TenantID,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$ApplicationID,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$Password,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$KeyVaultName,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$Name,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$ID,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$NewPassword\n)\n\n[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12\n\nIf ((Get-ExecutionPolicy) -NE 'RemoteSigned' -Or (Get-ExecutionPolicy) -NE 'Unrestricted') {\n  Set-ExecutionPolicy 'RemoteSigned' -Scope 'Process'\n}\n\n$ModulesToImport = @{\n  'Az.Accounts' = '2.10.3'\n  'Az.KeyVault' = '4.9.0'\n}\n\n# If your minimum version is older, run Update-Module -Name 'Az'\n$ModulesToImport.GetEnumerator() | ForEach-Object {\n  Try {\n    Import-Module -Name $PSItem.Key -MinimumVersion $PSItem.Value -ErrorAction 'Stop'\n  } Catch {\n    Write-Error (\"Failed to Import Module: {0}\" -F $Error[0].Exception.ToString())\n    Exit\n  }\n}\n\n$Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $ApplicationID, $Password\n\nTry {\n  $Account = Connect-AzAccount -ServicePrincipal -TenantId $TenantId -Credential $Credential -ErrorAction 'Stop'\n} Catch {\n  Write-Error (\"Failed to Connect to Azure: {0}\" -F $Error[0].Exception.ToString())\n  Exit\n}\n\nTry {\n  $Vault = Get-AzKeyVault -VaultName $KeyVaultName -ErrorAction 'Stop'\n} Catch {\n  Write-Error (\"Failed to Retrieve Key Vault: {0}\" -F $Error[0].Exception.ToString())\n  Exit\n}\n\nIf ($Vault) {\n  Try {\n    $RetrievedSecret = $Vault | Get-AzKeyVaultSecret -Name $Name -ErrorAction 'Stop'\n  } Catch {\n    Write-Error (\"Failed to Retrieve Secrets: {0}\" -F $Error[0].Exception.ToString())\n  }\n\n  If ($RetrievedSecret) {\n    Try {\n      $Result = Set-AzKeyVaultSecret -Vault $Vault.VaultName -Name $RetrievedSecret.Name -SecretValue $NewPassword -ErrorAction 'Stop'\n    } Catch {\n      Write-Error \"Failed to retrieve password: $($Error[0].Exception.ToString())\"\n    }\n\n    If ($Result) {\n      Return $True\n    } Else {\n      Write-Error \"Failed to Update Secret\"\n    }\n  } Else {\n    Write-Error \"Failed to find secrets by name\"\n  }\n}"
-      },
-      "heartbeat": {
-        "id": "4b26b7a8-65bd-4a81-9702-c465481d07a9",
-        "isActive": true,
-        "parameters": [
-          {
-            "name": "TenantID",
-            "propertyId": "f8c6aa95-0afa-4f65-97f3-d6d0bb37b801"
-          },
-          {
-            "name": "ApplicationID",
-            "propertyId": "c7e1e64e-e2b3-4cc6-ae4e-1807be879378"
-          },
-          {
-            "name": "Password",
-            "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
-          },
-          {
-            "name": "KeyVaultName",
-            "propertyId": "65001f49-e792-4e01-992f-5a4982e38ec0"
-          },
-          {
-            "name": "Name",
-            "source": 1,
-            "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73"
-          },
-          {
-            "name": "Secret",
-            "source": 1,
-            "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
-          },
-          {
-            "name": "ID",
-            "source": 1,
-            "propertyId": "54b6d680-0b89-4ce6-a512-bc98e0008fd7"
-          }
-        ],
-        "command": "[CmdletBinding()]\nParam (\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$TenantID,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$ApplicationID,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$Password,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$KeyVaultName,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$Name,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$Secret,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$ID\n)\n\n[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12\n\nIf ((Get-ExecutionPolicy) -NE 'RemoteSigned' -Or (Get-ExecutionPolicy) -NE 'Unrestricted') {\n  Set-ExecutionPolicy 'RemoteSigned' -Scope 'Process'\n}\n\n$ModulesToImport = @{\n  'Az.Accounts' = '2.10.3'\n  'Az.KeyVault' = '4.9.0'\n}\n\n\n# If your minimum version is older, run Update-Module -Name 'Az'\n$ModulesToImport.GetEnumerator() | ForEach-Object {\n  Try {\n    $Account = Import-Module -Name $PSItem.Key -MinimumVersion $PSItem.Value -ErrorAction 'Stop'\n  } Catch {\n    Write-Error (\"Failed to Import Module: {0}\" -F $Error[0].Exception.ToString())\n    Exit\n  }\n}\n\nIf (-Not [Bool](Get-AzAccessToken -ErrorAction 'SilentlyContinue')) {\n  $Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $ApplicationID, $Password\n\n  Try {\n    Connect-AzAccount -ServicePrincipal -TenantId $TenantId -Credential $Credential -ErrorAction 'Stop'\n  } Catch {\n    Write-Error (\"Failed to Connect to Azure: {0}\" -F $Error[0].Exception.ToString())\n    Exit\n  }\n}\n\nTry {\n  $Vault = Get-AzKeyVault -VaultName $KeyVaultName -ErrorAction 'Stop'\n} Catch {\n  Write-Error (\"Failed to Retrieve Key Vault: {0}\" -F $Error[0].Exception.ToString())\n  Exit\n}\n\nIf ($Vault) {\n  Try {\n    $RetrievedSecret = $Vault | Get-AzKeyVaultSecret -Name $Name -ErrorAction 'Stop'\n  } Catch {\n    Write-Error (\"Failed to Retrieve Secrets: {0}\" -F $Error[0].Exception.ToString())\n  }\n  If ($RetrievedSecret) {\n    Try {\n      $SecretPassword = $Vault | Get-AzKeyVaultSecret -Name $RetrievedSecret.Name -AsPlainText -ErrorAction 'Stop'\n    } Catch {\n      Write-Error \"Failed to retrieve password: $($Error[0].Exception.ToString())\"\n    }\n    If ($SecretPassword) {\n      # Use the System.Net.NetworkCredential class as ConvertFrom-SecureString -AsPlainText does not work on Windows PowerShell 5.1\n      If ($SecretPassword -EQ ([System.Net.NetworkCredential]::New(\"\", $Secret).Password)) {\n        Return $True\n      } Else {\n        Write-Error \"Password Does Not Match\"\n      }\n    } Else {\n      Write-Error \"No Password Value Returned\"\n    }\n  } Else {\n    Write-Error \"Failed to find secrets by name\"\n  }\n}",
-        "commandType": 1
-      }
+      "description": "",
+      "id": "1bc5784b-f63a-497c-85dc-b621f63bb24e",
+      "imageName": "",
+      "name": "Microsoft SQL Server Login",
+      "providerProperties": [
+        {
+          "id": "c24049c5-9ec4-4f26-832c-86f283067c73",
+          "name": "SQLLoginUsername",
+          "type": 4
+        },
+        {
+          "id": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
+          "name": "SQLLoginPassword",
+          "type": 3
+        },
+        {
+          "id": "572cf7d5-43bd-4a46-8b6d-772f9b14f164",
+          "isMandatory": true,
+          "name": "Server"
+        },
+        {
+          "id": "919c5d8d-ccd0-4d7e-9ed6-fd49f1621408",
+          "name": "Port",
+          "type": 1
+        },
+        {
+          "id": "44c1e508-7102-4cf4-8218-a64f13d19893",
+          "name": "Instance"
+        }
+      ]
     }
   }
-}
