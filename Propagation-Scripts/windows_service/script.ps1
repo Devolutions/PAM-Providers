@@ -66,10 +66,6 @@ param(
     [securestring]$NewPassword,
 
     [Parameter()]
-    [ValidatePattern(
-        '^\w+\.\w+$',
-        ErrorMessage = 'When using the AccountUserNameDomain parameter, you must provide the domain as an FQDN (domain.local)'
-    )]
     [string]$AccountUserNameDomain,
 
     [Parameter()]
@@ -83,10 +79,90 @@ param(
 # Output the script parameters and the current user running the script
 Write-Output -InputObject "Running script with parameters: $($PSBoundParameters | Out-String) as [$(whoami)]"
 
+if ($AccountUserNameDomain -and $AccountUserNameDomain -notmatch '^\w+\.\w+$') {
+    throw 'When using the AccountUserNameDomain parameter, you must provide the domain as an FQDN (domain.local)'
+}
+
 #region Functions
-# Function to create a new PSCredential object
 function newCredential([string]$UserName, [securestring]$Password) {
     New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $UserName, $Password
+}
+
+function testIsOnDomain {
+    (Get-CimInstance -ClassName win32_computersystem).PartOfDomain
+}
+
+function decryptPassword {
+    param(
+        [securestring]$Password
+    )
+    try {
+        $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)
+        [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
+    } finally {
+        ## Clear the decrypted password from memory
+        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
+    }
+}
+
+function updateServiceUserPassword {
+    param(
+        $ServiceInstance,
+        [string]$UserName,
+        [securestring]$Password
+    )    
+
+    Invoke-CimMethod -InputObject $ServiceInstance -MethodName Change -Arguments @{
+        StartName     = $UserName
+        StartPassword = decryptPassword($Password)
+    }
+}
+
+function GetServiceAccountNames {
+    param(
+        $UserName,
+        $Domain = '.'
+    )
+
+    if (!$PSBoundParameters.ContainsKey('Domain')) {
+        ## local account
+        @(
+            "$Domain\$Username" ## domain\user
+        )
+    } else {
+        ## Domain account with domain as FQDN
+        @(
+            "$Username@$Domain", ## user@domain.local
+            "$($Domain.split('.')[0])\$Username" ## domain\user
+        )
+    }
+}
+
+function ValidateUserAccountPassword {
+    [CmdletBinding()]
+    param(
+        [string]$UserName,
+        [string]$Domain,
+        [securestring]$Password
+    )
+
+    try {
+        Add-Type -AssemblyName System.DirectoryServices.AccountManagement
+
+        if ($Domain) {
+            $context = New-Object System.DirectoryServices.AccountManagement.PrincipalContext([System.DirectoryServices.AccountManagement.ContextType]::Domain, $Domain)
+        } else {
+            $context = New-Object System.DirectoryServices.AccountManagement.PrincipalContext([System.DirectoryServices.AccountManagement.ContextType]::Machine)
+        }
+    
+        $context.ValidateCredentials($UserName, (decryptPassword($Password)))
+    } catch {
+        Write-Error "An error occurred: $_"
+    } finally {
+        if ($context) {
+            $context.Dispose()
+        }
+    }
 }
 #endregion
 
@@ -96,98 +172,39 @@ $credential = newCredential $EndpointUserName $EndpointPassword
 # Define a script block to be executed remotely on the Windows server
 $scriptBlock = {
 
-    #region functions
-    # Function to decrypt a secure string password
-    function decryptPassword {
-        param(
-            [securestring]$Password
-        )
-        try {
-            $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)
-            [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)
-        } finally {
-            ## Clear the decrypted password from memory
-            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
-        }
-    }
-
-    function updateServiceUserPassword {
-        param(
-            $ServiceInstance,
-            [string]$UserName,
-            [securestring]$Password
-        )    
-    
-        Invoke-CimMethod -InputObject $ServiceInstance -MethodName Change -Arguments @{
-            StartName     = $UserName
-            StartPassword = decryptPassword($Password)
-        }
-    }
-
-    function GetServiceAccountNames {
-        param(
-            $UserName,
-            $Domain
-        )
-
-        if (!$Domain) {
-            ## local account
-            @(
-                "$($Domain)\$($Username)" ## domain\user
-            )
-        } else {
-            ## Domain account with domain as FQDN
-            @(
-                "$($Username)@$($Domain)", ## user@domain.local
-                "$($Domain.split('.')[0])\$($Username)" ## domain\user
-            )
-        }
-    }
-
-    function ValidateUserAccountPassword {
-        [CmdletBinding()]
-        param(
-            [string]$UserName,
-            [string]$Domain,
-            [securestring]$Password
-        )
-
-        try {
-            Add-Type -AssemblyName System.DirectoryServices.AccountManagement
-
-            if ($Domain) {
-                $context = New-Object System.DirectoryServices.AccountManagement.PrincipalContext([System.DirectoryServices.AccountManagement.ContextType]::Domain, $Domain)
-            } else {
-                $context = New-Object System.DirectoryServices.AccountManagement.PrincipalContext([System.DirectoryServices.AccountManagement.ContextType]::Machine)
-            }
-        
-            $context.ValidateCredentials($UserName, (decryptPassword($Password)))
-        } catch {
-            Write-Error "An error occurred: $_"
-        } finally {
-            if ($context) {
-                $context.Dispose()
-            }
-        }
-    }
-    #endregion
-
     $ErrorActionPreference = 'Stop'
 
     ## Assigning to variables inside the scriptblock allows mocking of args with Pester
     $userName = $args[0]
-    $userDomain = $args[1]
-    $pw = $args[2]
+    $userDomain = $args[2]
+    $pw = $args[1]
     $serviceNames = $args[3]
     $restartService = $args[4]
 
+    if ($userDomain -and !(testIsOnDomain)) {
+        throw "The AccountUserNameDomain parameter was used and the host is not on a domain. For local accounts, do not use the AccountUserNameDomain parameter."
+    }
+
     ## Ensure the password is valid
-    $validatePwResult = ValidateUserAccountPassword -UserName $userName -Domain $userDomain -Password $pw
+    $valUserAcctParams = @{
+        UserName = $userName
+        Password = $pw
+    }
+    if ($userDomain) {
+        $valUserAcctParams.Domain = $userDomain
+    }
+    $validatePwResult = ValidateUserAccountPassword @valUserAcctParams
     if (!$validatePwResult) {
         throw "The password for user account [$($UserName)] is invalid. Did you mean to provide a domain account? If so, use the AccountUserNameDomain parameter."
     }
 
-    $serviceAccountNames = GetServiceAccountNames -UserName $userName -Domain $userDomain
+    $getSrvAccountNamesParams = @{
+        UserName = $userName
+    }
+    if ($userDomain) {
+        $getSrvAccountNamesParams.Domain = $userDomain
+    }
+    [array]$serviceAccountNames = GetServiceAccountNames @getSrvAccountNamesParams
     $startNameCimQuery = "(StartName = '{0}')" -f ($serviceAccountNames -join "' OR StartName = '") ## (StartName = 'user@domain.local' OR StartName = 'domain\user')
 
     if (-not $serviceNames) {
@@ -219,14 +236,46 @@ $scriptBlock = {
     @($results).Count -eq @($serviceInstances).Count
 }
 
-## To process multiple services at once. This approach must be done because DVLS will not allow you to pass an array
-## of strings via a parameter.
-$serviceNames = $ServiceName -split ','
+## Ensures args passed to Invoke-Command always have the same count to check inside of the scriptblock
+$icmArgsList = $AccountUserName, $NewPassword
+@('AccountUserNameDomain', 'ServiceName', 'RestartService') | ForEach-Object {
+    if ($PSBoundParameters.ContainsKey($_) -and $_ -ne 'ServiceName') {
+        $icmArgsList += $PSBoundParameters[$_]
+    } elseif ($_ -eq 'ServiceName') {
+        ## To process multiple services at once. This approach must be done because DVLS will not allow you to pass an array
+        ## of strings via a parameter.
+        $icmArgsList += $ServiceName -split ','
+    } else {
+        $icmArgsList += $null
+    }
+}
 
-$invParams = @{
+#region Create a new PSSession
+$sessParams = @{
     ComputerName = $Endpoint
-    ScriptBlock  = $scriptBlock
     Credential   = $credential
-    ArgumentList = $AccountUserName, $AccountUserNameDomain, $NewPassword, $serviceNames, $RestartService
+}
+$session = New-PSSession @sessParams
+#endregion
+
+#region Load all of the local functions into the PSsession
+ForEach ($func in @('decryptPassword','updateServiceUserPassword','GetServiceAccountNames','ValidateUserAccountPassword','testIsOnDomain')) {
+	$lfunctions += "function $((Get-Item Function:\$func).Name) {$((Get-Item Function:\$func).ScriptBlock)};"
+}
+
+$loadFunctionsBlock = {
+	. ([scriptblock]::Create($args[0]))
+}
+
+Invoke-Command -Session $session -ScriptBlock $loadFunctionsBlock -ArgumentList $lfunctions
+#endregion
+
+## Invoke the main code execution
+$invParams = @{
+    Session = $session
+    ScriptBlock  = $scriptBlock
+    ArgumentList = $icmArgsList
 }
 Invoke-Command @invParams
+
+$session | Remove-PSSession
