@@ -1,3 +1,15 @@
+BeforeAll {
+
+    Mock 'Write-Output'
+    Mock 'Remove-PSSession'
+
+    Mock 'New-PSSession' {
+        New-MockObject -Type 'System.Management.Automation.Runspaces.PSSession'
+    }
+
+    . "$PSSCriptRoot\functions.ps1"
+}
+
 Describe 'Windows Service propagation script' {
 
     $mandatoryParameters = @{
@@ -14,33 +26,70 @@ Describe 'Windows Service propagation script' {
             parameter_set = $mandatoryParameters
         }
         @{
-            label         = 'one specific service'
+            label         = 'one specific service - in domain'
+            parameter_set = ($mandatoryParameters + @{
+                    ServiceName           = 'service1'
+                    AccountUserNameDomain = 'foo.local'
+                })
+        },
+        @{
+            label         = 'multiple specific services - in domain'
+            parameter_set = ($mandatoryParameters + @{
+                    ServiceName           = 'service1,service2'
+                    AccountUserNameDomain = 'foo.local'
+                })
+        }
+        @{
+            label         = 'one specific service to restart - in domain'
+            parameter_set = ($mandatoryParameters + @{
+                    ServiceName           = 'service1'
+                    RestartService        = 'yes'
+                    AccountUserNameDomain = 'foo.local'
+                })
+        }
+        @{
+            label         = 'multiple specific services to restart - in domain'
+            parameter_set = ($mandatoryParameters + @{
+                    ServiceName           = 'service1,service2'
+                    RestartService        = 'yes'
+                    AccountUserNameDomain = 'foo.local'
+                })
+        }
+        @{
+            label         = 'all services to restart - in domain'
+            parameter_set = ($mandatoryParameters + @{
+                    RestartService        = 'yes'
+                    AccountUserNameDomain = 'foo.local'
+                })
+        }
+        @{
+            label         = 'one specific service - in workgroup'
             parameter_set = ($mandatoryParameters + @{
                     ServiceName = 'service1'
                 })
         },
         @{
-            label         = 'multiple specific services'
+            label         = 'multiple specific services - in workgroup'
             parameter_set = ($mandatoryParameters + @{
                     ServiceName = 'service1,service2'
                 })
         }
         @{
-            label         = 'one specific service to restart'
+            label         = 'one specific service to restart - in workgroup'
             parameter_set = ($mandatoryParameters + @{
                     ServiceName    = 'service1'
                     RestartService = 'yes'
                 })
         }
         @{
-            label         = 'multiple specific services to restart'
+            label         = 'multiple specific services to restart - in workgroup'
             parameter_set = ($mandatoryParameters + @{
                     ServiceName    = 'service1,service2'
                     RestartService = 'yes'
                 })
         }
         @{
-            label         = 'all services to restart'
+            label         = 'all services to restart - in workgroup'
             parameter_set = ($mandatoryParameters + @{
                     RestartService = 'yes'
                 })
@@ -59,14 +108,71 @@ Describe 'Windows Service propagation script' {
         "$PSScriptRoot\template.json" | Should -Exist
     }
 
+    Context 'when the remote host is in a workgroup' {
+
+        $ctxParameterSets = $parameterSets.where({ $_.parameter_set.ContainsKey('AccountUserNameDomain') })
+
+        BeforeAll {
+            Mock Invoke-Command {
+                $functionsToDefine = @{
+                    'testIsOnDomain' = { $false }
+                }
+                
+                # Define mock variables if necessary
+                $variablesToDefine = New-Object System.Collections.Generic.List[System.Management.Automation.PSVariable]
+                
+                # Invoke the script block with mock context and arguments
+                $ScriptBlock.InvokeWithContext($functionsToDefine, $variablesToDefine, $ArgumentList)
+            }
+        }
+
+        It 'throws the expected error message : <_.label>' -ForEach $ctxParameterSets {
+
+            { & "$PSScriptRoot\script.ps1" @parameter_set } | Should -Throw '*The AccountUserNameDomain parameter was used and the host is not on a domain*'
+
+        }
+    }
+
+    Context 'when the password provided is incorrect' {
+        
+        BeforeAll {
+
+            Mock 'testIsOnDomain' { $true }
+
+            Mock Invoke-Command {
+                $functionsToDefine = @{
+                    'ValidateUserAccountPassword' = { $false }
+                }
+                
+                # Define mock variables if necessary
+                $variablesToDefine = New-Object System.Collections.Generic.List[System.Management.Automation.PSVariable]
+                
+                # Invoke the script block with mock context and arguments
+                $ScriptBlock.InvokeWithContext($functionsToDefine, $variablesToDefine, $ArgumentList)
+            }
+        }
+
+        It 'returns the expected error : <_.label>' -ForEach $parameterSets {
+
+            { & "$PSScriptRoot\script.ps1" @parameter_set } | Should -Throw '*The password for user account * is invalid*'
+
+        }
+    }
+
     Context 'when no services running the the specified username exist' {
 
         $ctxParameterSets = $parameterSets.where({ !$_.parameter_set.ContainsKey('ServiceName') })
 
         BeforeAll {
-            Mock 'Write-Output'
+
+            Mock 'ValidateUserAccountPassword' {
+                $true
+            }
+            Mock 'testIsOnDomain' { $true }
+
             Mock Invoke-Command {
                 $functionsToDefine = @{
+                    'testIsOnDomain'  = { $true }
                     'Get-CimInstance' = {}
                 }
     
@@ -89,7 +195,10 @@ Describe 'Windows Service propagation script' {
     Context 'when applicable services are found and running' {
 
         BeforeAll {
-            Mock 'Write-Output'
+            Mock 'ValidateUserAccountPassword' {
+                $true
+            }
+            Mock 'testIsOnDomain' { $true }
         }
         
         It 'returns $true if all service accounts are reset successfully : <_.label>' -ForEach $parameterSets {
@@ -166,10 +275,15 @@ Describe 'Windows Service propagation script' {
     Context 'when applicable services are found and not running' {
 
         BeforeAll {
-            Mock 'Write-Output'
+
+            Mock 'ValidateUserAccountPassword' {
+                $true
+            }
+            Mock 'testIsOnDomain' { $true }
+            
             Mock Invoke-Command {
                 $functionsToDefine = @{
-                    'Get-CimInstance' = {
+                    'Get-CimInstance'  = {
                         [pscustomobject]@{
                             Name      = 'service1'
                             StartName = 'serviceuserhere'
