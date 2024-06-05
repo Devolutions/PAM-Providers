@@ -1,14 +1,29 @@
+The Azure Key Vault (AKS) provider was last tested on **05/20/2024** and against Devolutions Server (DVLS) version **v2024.1.14.0**. The provider allows you to:
+
+- Import AKS Secrets
+- Rotate AKS Secret Values
+
 ## Prerequisites
 
-The following PowerShell Modules are required. These modules must be installed and accessible to the PowerShell installation on the system hosting the Devolutions Server (DVLS) installation. There is a 5.x version of PowerShell embedded within DVLS that must have access to the PowerShell modules, hence the need to install the modules for the entire system.
+You must have a previously created Azure Key Vault to manage with the Devolutions Server Privileged Access Module (PAM) solution.
 
-- **Az.Accounts** 2.10.3 or higher - `Install-Module -Name Az.Accounts -Scope AllUsers`
-- **Az.KeyVault** 4.9.0 or higher - `Install-Module -Name Az.KeyVault -Scope AllUsers`
-- **Az.Resources** 6.5.1 or higher (Optional for setup script) - `Install-Module -Name Az.Resources -Scope AllUsers`
+> The PowerShell modules listed below are the required version to install. Newer versions will not work correctly at this time.
+
+- [**Az.Accounts** - 2.16.0](https://www.powershellgallery.com/packages/Az.Resources/)
+
+    ```PowerShell
+    Install-Module -Name 'Az.Accounts' -Scope 'AllUsers' -RequiredVersion '2.16.0'
+    ```
+
+- [**Az.KeyVault** - 5.2.1](https://www.powershellgallery.com/packages/Az.KeyVault/)
+
+  ```PowerShell
+  Install-Module -Name 'Az.KeyVault' -Scope 'AllUsers' -RequiredVersion '5.2.1'
+  ```
 
 ## Registering an Azure Active Directory Application for Service Principal Access
 
-1. Navigate to **Azure Active Directory → App registrations** in the Azure Portal. Once there, click the **New registration** button.
+1. Navigate to **Microsoft Entra ID → App registrations** in the Microsoft Azure Portal. Once there, click the **New registration** button.
 
     ![Register a New App Registration](../../Images/azure-key-vault/akv-01-register-new-application.png)
 
@@ -20,7 +35,7 @@ The following PowerShell Modules are required. These modules must be installed a
 
     ![Select Newly Registered Application](../../Images/azure-key-vault/akv-03-select-application-registration.png)
 
-4. Navigate to the **Certificates & secrets** section, click the **Client secrets** tab, and click the **New client secret** button.
+4. Navigate to **Certificates & secrets** section, select the **Client secrets** tab, and click the **New client secret** button.
 
     ![Create New Client Secret](../../Images/azure-key-vault/akv-04-new-client-secret.png)
 
@@ -30,112 +45,39 @@ The following PowerShell Modules are required. These modules must be installed a
 
     ![Result of Creating a New Client Secret](../../Images/azure-key-vault/akv-06-new-client-created.png)
 
-6. Navigate to **Azure Portal → Key Vaults → "Vault Name (Devolutions)" → Access configuration**. Ensure that the option for **Vault access policy** is selected.
+6. Navigate to **Azure Portal → Key vaults → "Your Key Vault" → Access configuration**. Ensure that the option for **Azure role-based access control (recommended)** is selected.
 
     ![Configure Permission Model](../../Images/azure-key-vault/akv-07-configure-permission-model.png)
 
-7. Next, click on **Access policies** and the **Create** button.
+7. Next, navigate to **Access Control (IAM)** and click on the **Add** button and choose **Add role assignment**.
 
-    ![Create Access Policy](../../Images/azure-key-vault/akv-08-create-access-policy.png)
+    ![Configure Permission Model](../../Images/azure-key-vault/akv-08-add-role-assignment.png)
 
-8. Add only the necessary permissions, which are Get and List for Key permissions, and Get, List, and Set for Secret permissions. Click the **Next** button.
+8. You will add two different IAM roles to your previously created Azure app. Filter by _Key Vault_ and choose the first role of **Key Vault Reader** and click the **Next** button.
 
-    ![Select Permissions for Access Policy](../../Images/azure-key-vault/akv-09-select-access-policy-permissions.png)
+    ![Add Key Vault Reader IAM Role](../../Images/azure-key-vault/akv-09-add-key-vault-reader.png)
 
-9. Locate the previously created application in Azure Active Directory and select the application.
+9. Choose to assign access to a user, group, or service principal and click the **Select members** link. Enter and select your previously created service principal.
 
-    ![Select Access Policy Principal](../../Images/azure-key-vault/akv-10-select-access-policy-principal.png)
+    ![Assign Member to Key Vault Reader](../../Images/azure-key-vault/akv-10-add-member-reader.png)
 
-10. Leave all defaults for the **Application** section and click the **Next** button.
+10. Once added, click **Review + assign**, and again, to confirm the selection.
 
-    ![Select Application Access Policy Defaults](../../Images/azure-key-vault/akv-11-access-policy-applicaition-defaults.png)
+    ![Confirm Key Vault Reader Role](../../Images/azure-key-vault/akv-11-confirm-key-vault-reader.png)
 
-11. Finally, click the **Create** button on the **Review + create** section to finalize the Access Policy creation.
+11. With the first permission added once again, click on the **Add** button and choose **Add role assignment**. filter by _Key Vault_ and choose the second role of **Key Vault Secrets Officer** and click the **Next** button.
 
-    ![Create the Access Policy](../../Images/azure-key-vault/akv-12-access-policy-creation.png)
+    ![Add Key Vault Office IAM Role](../../Images/azure-key-vault/akv-12-add-key-vault-secrets-officer.png)
 
-## Creating an Azure Active Directory Application, Service Principal, and Access Policy via the PowerShell Az Module
+12. As before, select your previously created service principal and once added, review and assign to finish the selection.
 
-An alternative method of creating the relevant pieces for the Devolutions Server PAM module to connect to Azure Key Vault is through the Az PowerShell module. An example script is shared below. Modify the initial variables to account for your environment.
+13. Once completed, you will see both roles added to your service principal.
 
-```powershell
-# Ensure that Tls12 is used to connect for all API functions.
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
-# Modify these variables to reflect your operational needs.
-$ApplicationName = 'AppForServicePrincipalKeyVault'
-$KeyVault        = 'Devolutions'
-$ResourceGroup   = 'Devolutions'
-$TenantId        = 'MyTenantID'
-
-# These are the minimum necessary versions, as tested with this code.
-$ModulesToImport = @{
-  'Az.Accounts'  = '2.10.3'
-  'Az.KeyVault'  = '4.9.0'
-  'Az.Resources' = '6.5.1'
-}
-
-# If your minimum version is older, run Update-Module -Name 'Az'
-$ModulesToImport.GetEnumerator() | ForEach-Object {
-  Try {
-    Import-Module -Name $PSItem.Key -MinimumVersion $PSItem.Value -ErrorAction 'Stop'
-  } Catch {
-    Write-Error ("Failed to Import Module: {0}" -F $Error[0].Exception.ToString())
-    Exit
-  }
-}
-
-Try {
-  $Account = Connect-AzAccount -TenantId $TenantId -ErrorAction 'Stop'
-} Catch {
-  Write-Error ("Failed to Connect to Azure: {0}" -F $Error[0].Exception.ToString())
-  Exit
-}
-
-Try {
-  $Application = New-AzADApplication -DisplayName $ApplicationName -ErrorAction 'Stop'
-} Catch {
-  Write-Error ("Failed to Create AD Application: {0}" -F $Error[0].Exception.ToString())
-  Exit
-}
-
-# Each Azure Application Credential is time-limited.
-# The default Start Date is Today, and the default End Date is 1 Year from the time of creation.
-# Modify these values with the -StartDate and -EndDate parameters.
-Try {
-  $ApplicationSecret = $Application | New-AzADAppCredential -ErrorAction 'Stop'
-} Catch {
-  Write-Error ("Failed to Create AD Application: {0}" -F $Error[0].Exception.ToString())
-  Exit
-}
-
-# Modify Key Vault Access Configuration for Vault Access Policy, and not RBAC.
-Try {
-  Get-AzKeyVault -VaultName $KeyVault -ResourceGroupName $ResourceGroup -ErrorAction 'Stop' | Update-AzKeyVault -EnableRbacAuthorization $False -ErrorAction 'Stop'
-} Catch {
-  Write-Error ("Failed to Update Azure Key Vault Access Configuration: {0}" -F $Error[0].Exception.ToString())
-  Exit
-}
-
-$Params = @{
-  'VaultName'            = $KeyVault
-  'ObjectId'             = $Application.Id
-  'PermissionsToKeys'    = @('get','list')
-  'PermissionsToSecrets' = @('get','list','set')
-}
-
-Try {
-  $AccessPolicy = Set-AzKeyVaultAccessPolicy @Params -ErrorAction 'Stop'
-} Catch {
-  Write-Error ("Failed to Add Access Policy: {0}" -F $Error[0].Exception.ToString())
-}
-```
+    ![Added IAM Roles](../../Images/azure-key-vault/akv-13-configured-iam-roles.png)
 
 ## Importing the Azure Key Vault PAM Provider JSON
 
-> Functionality to import a PAM Provider via a JSON template is not yet released, as of version **2022.3.13.0**.
-
-Instead of manually creating the PAM Provider, an included `Azure Key Vault.json` file is located in the repository that creates the PAM Provider for you.
+An included `Azure Key Vault.json` file is located in the repository that creates the PAM Provider for you.
 
 ## Manually Setting Up the Azure Key Vault PAM Provider
 
@@ -143,65 +85,54 @@ Now that the Azure Key Vault is setup for use with the Devolutions Server PAM mo
 
 1. Launch the Devolutions Server web portal, and navigate to **Administration → Privileged Access**.
 
-    ![Open DVLS Portal Privileged Access](../../Images/azure-key-vault/akv-17-dvls-portal-administration-2.png)
+    ![Open DVLS Portal Privileged Access](../../Images/azure-key-vault/akv-14-dvls-portal-administration.png)
 
 2. Click the **Providers** button.
 
-    ![Open DVLS Portal Providers](../../Images/azure-key-vault/akv-18-dvls-portal-privileged-access-2.png)
+    ![Open DVLS Portal Providers](../../Images/azure-key-vault/akv-15-dvls-portal-privileged-access.png)
 
 3. Click the **Template** button.
 
-    ![Open DVLS Portal Provider Templates](../../Images/azure-key-vault/akv-19-dvls-portal-template-2.png)
+    ![Open DVLS Portal Provider Templates](../../Images/azure-key-vault/akv-16-dvls-portal-template.png)
 
 4. Click the **Add** button.
 
-    ![Create New PAM Provider Template](../../Images/azure-key-vault/akv-20-dvls-portal-template-add.png)
+    ![Create New PAM Provider Template](../../Images/azure-key-vault/akv-17-dvls-portal-template-add.png)
 
 5. On the General tab, enter a name and check the Password rotation, Heartbeat, and Account discovery checkboxes.
 
-    ![Enter PAM Provider General Details](../../Images/azure-key-vault/akv-21-template-general.png)
+    ![Enter PAM Provider General Details](../../Images/azure-key-vault/akv-18-template-general.png)
 
 6. On the Provider Properties section, add the following (spelling and spacing matters):
 
    1. `TenantID` as a **Mandatory** String property.
-
    2. `ApplicationID` as a **Mandatory** String property.
-
-   3. `Password` as a **Mandatory** Sensitive Data property.
-
+   3. `Password` as a **Mandatory** Password property.
    4. `KeyVaultName` as a **Mandatory** String property.
 
-      ![Enter Provider Details](../../Images/azure-key-vault/akv-22-template-provider.png)
+      ![Enter Provider Details](../../Images/azure-key-vault/akv-19-template-provider.png)
 
 7. On the Account Properties section, add the following (spelling and spacing matters):
 
    1. `Name` as a **Mandatory** Username property.
-
    2. `Secret` as a **Mandatory** Password property.
+   3. `ID` as a **Mandatory** Unique Identifier property (this may be simply renaming the existing property). This property is also only used during discovery to ensure uniqueness.
 
-   3. `ID` as a **Mandatory** Unique Identifier property (this may be simply renaming the existing property).
-
-      ![Enter Account Details](../../Images/azure-key-vault/akv-23-template-account.png)
+      ![Enter Account Details](../../Images/azure-key-vault/akv-20-template-account.png)
 
 8. On the Password Rotation section, add the following (spelling, spacing, and mapping matters):
 
    1. `TenantID` from **Provider** and mapped to `TenantID`.
-
    2. `ApplicationID` from **Provider** and mapped to `ApplicationID`.
-
    3. `Password` from **Provider** and mapped to `Password`.
-
    4. `KeyVaultName` from **Provider** and mapped to `KeyVaultName`.
-
    5. `Name` from **Account** and mapped to `Name`.
 
-   6. `ID` from **Account** and mapped to `ID`.
+      ![Enter Password Rotation Mapping](../../Images/azure-key-vault/akv-21-template-password-rotation.png)
 
-      ![Enter Password Rotation Mapping](../../Images/azure-key-vault/akv-24-template-password-rotation.png)
+9. Scroll down to the bottom of the Password Rotation section and click the **Edit** button to paste in the script located here in the repository: *PAM-Providers/Providers/Azure Key Vault/Script/AzureKeyVaultImageResetPassword.ps1*
 
-9. Scroll down to the bottom of the Password Rotation section and click on the Edit button to paste in the script located here in the repository: *PAM-Providers/Providers/Azure Key Vault/Script/AzureKeyVaultImageResetPassword.ps1*
-
-    ![Enter Password Rotation Code](../../Images/azure-key-vault/akv-25-template-password-rotation-code.png)
+    ![Enter Password Rotation Code](../../Images/azure-key-vault/akv-22-template-password-rotation-code.png)
 
 10. On the Heartbeat section, add the following (spelling, spacing, and mapping matters):
 
@@ -211,13 +142,12 @@ Now that the Azure Key Vault is setup for use with the Devolutions Server PAM mo
     4. `KeyVaultName` from **Provider** and mapped to `KeyVaultName`.
     5. `Name` from **Account** and mapped to `Name`.
     6. `Secret` from **Account** mapped to `Secret`.
-    7. `ID` from **Account** and mapped to `ID`.
 
-    ![Enter Heartbeat Details](../../Images/azure-key-vault/akv-26-template-heartbeat.png)
+    ![Enter Heartbeat Details](../../Images/azure-key-vault/akv-23-template-heartbeat.png)
 
-11. Scroll down to the bottom of the Heartbeat section and click on the Edit button to paste in the script located here in the repository: *PAM-Providers/Providers/Azure Key Vault/Script/AzureKeyVaultImageHeartbeat.ps1*
+11. Scroll down to the bottom of the Heartbeat section and click the **Edit** button to paste in the script located here in the repository: *PAM-Providers/Providers/Azure Key Vault/Script/AzureKeyVaultImageHeartbeat.ps1*
 
-    ![Enter Heartbeat Code](../../Images/azure-key-vault/akv-27-template-heartbeat-code.png)
+    ![Enter Heartbeat Code](../../Images/azure-key-vault/akv-24-template-heartbeat-code.png)
 
 12. On the Account Discovery section, add the following (spelling, spacing, and mapping matters):
 
@@ -226,36 +156,38 @@ Now that the Azure Key Vault is setup for use with the Devolutions Server PAM mo
     3. `Password` from **Provider** and mapped to `Password`.
     4. `KeyVaultName` from **Provider** and mapped to `KeyVaultName`.
 
-    ![Enter Account Discovery Details](../../Images/azure-key-vault/akv-28-template-account-discovery.png)
+    ![Enter Account Discovery Details](../../Images/azure-key-vault/akv-25-template-account-discovery.png)
 
 13. Scroll down to the bottom of the Heartbeat section and click on the Edit button to paste in the script located here in the repository: *PAM-Providers/Providers/Azure Key Vault/Script/AzureKeyVaultImageAccountDiscovery.ps1*
 
-    ![Enter Account Discovery Code](../../Images/azure-key-vault/akv-29-template-account-discovery-code.png)
+    ![Enter Account Discovery Code](../../Images/azure-key-vault/akv-26-template-account-discovery-code.png)
 
 14. Finally, click the **Save** button.
 
 15. Navigate to **Administration → Privileged Access → Providers** and click the **+** (plus) button to add the newly created Azure Key Vault provider.
 
-    ![Add New Provider](../../Images/azure-key-vault/akv-30-add-provider-template.png)
+    ![Add New Provider](../../Images/azure-key-vault/akv-27-add-provider-template.png)
 
-16. Click on the Custom section and the Azure Key Vault provider.
+16. Click on the **AnyIdentity** section and the **Azure Key Vault** provider.
 
-    ![Select Custom Provider](../../Images/azure-key-vault/akv-31-select-custom-provider.png)
+    ![Select AnyIdentity Provider](../../Images/azure-key-vault/akv-28-select-anyidentity-provider.png)
 
-17. Enter a Name for the Provider, here Azure Key Vault is used. Scroll down and enter the TenantID (Azure) and ApplicationID (Azure Application Registration ID property). Click the Save button.
+17. Enter a **Name** for the Provider, here **Azure Key Vault** is used. Scroll down and enter the **TenantID** (Azure), **ApplicationID** (Azure Application Registration ID property), **Password**, and **KeyVaultName**. Check the options to **"Add PAM vault"** and **"Add Scan Configuration"**. Finally, click the **Save** button.
 
-    ![Enter Template Details Part One](../../Images/azure-key-vault/akv-32-enter-template-settings-1.png)
+    ![Enter Template Details](../../Images/azure-key-vault/akv-29-enter-template-settings.png)
 
-    ![Enter Template Details Part Two](../../Images/azure-key-vault/akv-33-enter-template-settings-2.png)
+18. The **Scan configuration** modal will show, enter a **Name** and click the **OK** button to start the scan.
 
-18. Navigate to **Administration → Privileged Access → Account Discovery** and once the scan has completed, click the number contained in the results field.
+    ![Enter Template Details](../../Images/azure-key-vault/akv-30-enter-scan-settings.png)
 
-    ![View Scan Results](../../Images/azure-key-vault/akv-34-provider-scan.png)
+19. Navigate to **Administration → Privileged Access → Account Discovery** and once the scan has completed, click the number contained in the results field.
 
-19. Check the boxes next to each value to manage and click the blue import button in the upper right.
+    ![View Scan Results](../../Images/azure-key-vault/akv-31-provider-scan.png)
 
-    ![Import Scan Results](../../Images/azure-key-vault/akv-35-provider-scan-2.png)
+20. Check the boxes next to each secret to import and click the blue import button in the upper right.
 
-20. Leave the defaults, and click the **OK** button to import and manage the found accounts. You may not want to reset on import, if the key vault secrets are currently in use.
+    ![Import Scan Results](../../Images/azure-key-vault/akv-32-provider-scan-import.png)
 
-    ![Finalize Importing Scan Results](../../Images/azure-key-vault/akv-36-import-accounts.png)
+21. Change the **Path** to the PAM vault to import into and click the **OK** button to import and manage the found accounts. You may not want to reset on import, if the key vault secrets are currently in use.
+
+    ![Finalize Importing Scan Results](../../Images/azure-key-vault/akv-33-confirm-account-import.png)
