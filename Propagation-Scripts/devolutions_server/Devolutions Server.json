@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "template": {
+    "command": "    [CmdletBinding()]\n    Param (\n      [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$NewPassword,\n      [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$DevolutionsServerUrl,\n      [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$ApplicationKey,\n      [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$ApplicationSecret,\n      [Parameter(Mandatory = $False)][String]$VaultId,\n      [Parameter(Mandatory = $False)][String]$VaultName,\n      [Parameter(Mandatory = $False)][String]$RunAsAccount,\n      [Parameter(Mandatory = $False)][SecureString]$RunAsPassword,\n      [Parameter(Mandatory = $False)][String]$PSSessionConfigurationName,\n      [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$EntryName    )\n    \n    Try {\n        $ConfigurationName = 'PowerShell.7'\n        If ($PSSessionConfigurationName) {\n            $ConfigurationName = $PSSessionConfigurationName\n        }\n    \n        If ($RunAsAccount -And $RunAsPassword) {\n            $RunAsCredential = New-Object System.Management.Automation.PSCredential($RunAsAccount, $RunAsPassword)\n    \n            $Session = New-PSSession -ComputerName localhost -ConfigurationName $ConfigurationName -Credential $RunAsCredential -ErrorAction 'Stop'\n        } Else {\n            $Session = New-PSSession -ComputerName localhost -ConfigurationName $ConfigurationName -ErrorAction 'Stop'\n        }\n    } Catch {\n    Write-Error (\"Failed to Open Remote Session: {0}\" -F $PSItem[0].Exception.Message)\n    }\n    \n    $Params = @{\n        \"Session\" = $Session\n        \"ScriptBlock\" = {\n            Import-Module -Name Devolutions.PowerShell\n            \n            $Credential = New-Object System.Management.Automation.PSCredential @($Using:ApplicationKey, $Using:ApplicationSecret)\n            New-DSSession -BaseUri $Using:DevolutionsServerUrl -Credential $Credential\n    \n            if ($Using:VaultId) {\n                $Vault = (Get-DSVault -VaultId $Using:VaultId).data\n            }\n            else {\n                $Vault = (Get-DSVault -All).data | Where-Object { $_.Name -eq $Using:VaultName }\n            }\n    \n            if (-not $Vault) {\n                Write-Error \"Vault can't be found.\"\n            }\n    \n            $DvlsEntry = (Get-DSEntry -VaultId $Vault.ID -All).data | Where-Object { $_.name -eq $Using:EntryName }\n            if ($DvlsEntry) {\n                if ($DvlsEntry.connectionType -eq 26) {\n                    $RawEntry = (Get-DSEntry -EntryId $DvlsEntry.ID).data\n                    $NewPasswordNonSecure = ConvertFrom-SecureString $Using:NewPassword -AsPlainText;\n                    $RawEntry.data.password | Add-Member -MemberType NoteProperty -Name SensitiveData -Value $NewPasswordNonSecure\n                    $Result = Update-DSEntryBase -JsonBody (ConvertTo-Json -InputObject $RawEntry -Depth 4)\n\n                    if ($Result.Result -ne 'Success') {\n                        $Message = $Result.ErrorMessage\n                        Write-Error \"Password update failed: $Message\"\n                    }\n                } else {\n                    Write-Error \"Invalid entry type. Only credentials are supported.\"\n                }\n            } else {\n                Write-Error \"Entry $Using:EntryName can't be found.\"\n            }\n        }\n        \"ErrorAction\" = 'Stop'\n    }\n    \n    Try {\n        Invoke-Command @Params\n    } Catch {\n        Write-Error (\"Failed to Run script: {0}\" -F $PSItem[0].Exception.Message)\n    } Finally {\n        $Session | Remove-PSSession\n    }\n",
+    "configurationProperties": [
+      {
+        "id": "8e74c530-ac94-4cae-ac09-e031ae0894c2",
+        "isMandatory": true,
+        "name": "DevolutionsServerUrl"
+      },
+      {
+        "id": "2b7bc6d0-909a-4881-b240-8d9b2451ef8f",
+        "isMandatory": true,
+        "name": "ApplicationKey"
+      },
+      {
+        "id": "e71c986c-5733-47f8-bb5f-02335b60efb3",
+        "isMandatory": true,
+        "name": "ApplicationSecret",
+        "type": 5
+      },
+      {
+        "id": "2866e1e0-744b-4824-9286-c455ac780ae7",
+        "name": "VaultId"
+      },
+      {
+        "id": "b5c9a21d-2cb2-4dd3-8a27-43841afa2c96",
+        "name": "VaultName"
+      },
+      {
+        "id": "59d54c21-56dc-4eff-9162-ef84a1d1293d",
+        "name": "RunAsAccount"
+      },
+      {
+        "id": "6536f8f3-1dc8-4e95-ae40-80889b951380",
+        "name": "RunAsPassword",
+        "type": 5
+      },
+      {
+        "id": "97f8041c-88c0-4ddb-84f9-050bce090170",
+        "name": "PSSessionConfigurationName"
+      }
+    ],
+    "description": "Propagate your privileged account rotated password to a secret on a Devolutions Server",
+    "executionProperties": [
+      {
+        "id": "b33d510d-d70d-48ed-b0cd-64c473fefc44",
+        "isMandatory": true,
+        "name": "EntryName",
+        "type": 8
+      }
+    ],
+    "id": "3d7eea16-3ed7-4702-97c1-8750a2493a80",
+    "imageBytes": "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",
+    "name": "Devolutions Server"
+  }
+}
