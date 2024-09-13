@@ -9,7 +9,9 @@ Click on the name of the template that interests you for more details.
 | Template name                        | Description                                                                                                                       |
 |--------------------------------------|:----------------------------------------------------------------------------------------------------------------------------------|
 | [Azure KeyVault](./azure_key_vault) | A template for propagating the password of a privileged account after its rotation to a corresponding account on Azure KeyVault.  |
+| [AKS Secret Rotation](./aks_secret_rotation) | A template for propagating the password of a privileged account after its rotation to a corresponding secret in the desired cluster.  |
 | [Window Service](./windows_service) | A template for propagating the password on a Windows Service target computer operated by the user.  |
+
 
 
 # Propagation Script
@@ -19,19 +21,19 @@ Propagation scripts allow you to execute a custom PowerShell script at the end o
 ## Architecture of a propagation script
 
 A propagation script requires three components to work properly.
-1. **Propagation Template**   
-The template serves as the foundation of the script. It is where various variables are declared, which are later used in the script. These variables will be filled in the configuration section of the propagation script.   
+1. **Propagation Template**
+The template serves as the foundation of the script. It is where various variables are declared, which are later used in the script. These variables will be filled in the configuration section of the propagation script.
 This is also where you will find the PowerShell script itself.
-2. **Propagation configuration**   
+2. **Propagation configuration**
 The configuration is where the values of the variables are provided. It is the place to specify the specific values for the variables used in the template.
-3. **Link between the resource and the configuration**   
+3. **Link between the resource and the configuration**
 Subsequently, one or more configurations are attached to a privileged account. This ensures that the propagation is executed when the password is updated for the associated account or for accounts within the parent folder.
 
 ## Different types of variables
 There are two types of variables to configure, referred to as "properties" in the interface.
-1. **Propagation properties**   
+1. **Propagation properties**
 These are the "global" properties of the script. Regardless of the account or folder it is linked to, the specified values remain the same.
-2. **Mapping properties**   
+2. **Mapping properties**
 These properties allow defining values for each privileged account type. Typically, these properties are mapped to a known field of the account type. It is also possible to define arbitrary values, although it is less common.
 
 ## Usage context
