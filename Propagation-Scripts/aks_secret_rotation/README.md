@@ -41,3 +41,18 @@ To test the script on your server's console, use the following PowerShell comman
 ```
 ### Note:
 Replace the placeholders (e.g., `"your-tenant-id"`, `"your-cluster-context"`, etc.) with the actual values for your environment to ensure correct script execution.
+
+## Properties
+
+| Property             | Description                                                                 | Mandatory | Example                                    |
+|----------------------|-----------------------------------------------------------------------------|-----------|--------------------------------------------|
+| AzureTenantID        | The tenant ID of your organizatiobn. | Yes       | "1a2b3c4d-5e6f-7g8h-9i0j-1k2l3m4n5o6p"     |
+| AzureApplicationID   | The ID of the service principal in Azure AD | Yes       | "abcdef12-3456-7890-abcd-ef1234567890"     |
+| AzureApplicationSecret | The client secret of the service principal. This is used for authenticating the application with Azure AD. | Yes       | (SecureString)                             |
+| Cluster              | The name of the Kubernetes cluster where the application is deployed.        | Yes       | "my-k8s-cluster"                           |
+| Deployment           | The name of the deployment resource in your Kubernetes cluster.              | Yes       | "my-app-deployment"                        |
+| Namespace            | The Kubernetes namespace where the deployment is located.                    | Yes       | "production"                               |
+| SecretName           | The name of the secret resource in Kubernetes that contains sensitive information. | Yes       | "my-app-secret"                            |
+| ConfigPath           | The file path to the `kubectl` configuration file used for interacting with the Kubernetes cluster. | Yes       | "/home/user/.kube/config"                  |
+| NewPassword          | The new password for the user (this field may store the new password when required for user updates). | Yes       | (SecureString)                             |
+| SubscriptionID       | The Azure subscription ID under which the resources are provisioned.         | Yes       | "12345678-90ab-cdef-1234-567890abcdef"     |
