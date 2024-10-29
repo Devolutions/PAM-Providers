@@ -89,7 +89,7 @@ $scriptBlock = {
     # Process each scheduled task and update the user password
     [array]$results = foreach ($schedTask in $schedTasks) {
         try {
-            $null = Set-ScheduledTask -TaskName $schedTask.TaskName -User $username -Password (decryptPassword($pw))
+            $null = Set-ScheduledTask -TaskName $schedTask.TaskName -TaskPath $schedTask.TaskPath -User $username -Password (decryptPassword($pw))
             $true
         } catch {
             if ($_.Exception.Message -match 'The user name or password is incorrect') {
