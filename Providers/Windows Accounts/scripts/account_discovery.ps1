@@ -20,11 +20,9 @@ Param (
 	Param ($Hostname,
 		$ExcludeDisabled)
 	
-	Function Get-LocalUserADSI
-	{
+	Function Get-LocalUserADSI{
 		
-		Begin
-		{
+		Begin{
 			
 			#region  Helper Functions
 			
@@ -101,11 +99,9 @@ Param (
 			
 		}
 		
-		Process
-		{
+		Process{
 			$adsi = [ADSI]"WinNT://$env:COMPUTERNAME"
-			
-			$adsi.Children | where { $_.SchemaClassName -eq 'user' } | ForEach {
+			$adsi.Children | Where-Object { $_.SchemaClassName -eq 'user' } | ForEach {
 				
 				[pscustomobject]@{
 					
@@ -120,21 +116,16 @@ Param (
 					#MaxPasswordAge = [math]::Round($_.MaxPasswordAge[0]/86400)
 					#BadPasswordAttempts = $_.BadPasswordAttempts[0]
 					#MaxBadPasswords = $_.MaxBadPasswordsAllowed[0]
-					
 				}
 			}
 		}
 	}
 	
-	Try
-	{
-		
-		If ($ExcludeDisabled)
-		{
+	Try{
+		If ($ExcludeDisabled){
 			$LocalAccounts = Get-LocalUserADSI | Where-Object { $_.UserFlags -notmatch 'ACCOUNTDISABLE' } -ErrorAction 'Stop'
 		}
-		Else
-		{
+		Else{
 			$LocalAccounts = Get-LocalUserADSI -ErrorAction 'Stop'
 		}
 		
@@ -150,15 +141,12 @@ Param (
 		}
 		Write-Output $Accounts
 	}
-	Catch
-	{
+	Catch{
 		Write-Error "LocalAccount failed to be retrieved on host $Hostname"
 	}
-	
 }
 
-function Get-WinRMNetworkParameters
-{
+function Get-WinRMNetworkParameters{
 	param (
 		[Parameter(Mandatory = $True)]
 		[ValidateNotNullOrEmpty()]
@@ -173,23 +161,19 @@ function Get-WinRMNetworkParameters
 				ComputerName = $Hostname
 			}
 			
-			switch ($_)
-			{
+			switch ($_){
 				({
 						#check if host supports SSL Port
 						[System.Net.Sockets.TcpClient]::new().ConnectAsync($_, 5986).Wait(100)
-					})
-				{
+					}){
 					$SessionParameters.Add("Port", 5986)
 					$SessionParameters.Add("UseSSL", $True)
-					Try
-					{
+					Try{
 						$result = Test-WSMan @SessionParameters
 					}
-					Catch
-					{
-						Write-EventLog -LogName Devolutions -EntryType Warning -Source "DVLS" -EventId 1 -Message $Error[0].Exception.ToString()
-						#Write-Error $Error[0].Exception.ToString()
+					Catch{
+						#Write-EventLog -LogName Devolutions -EntryType Warning -Source "DVLS" -EventId 1 -Message $Error[0].Exception.ToString()
+						Write-Verbose  $Error[0].Exception.ToString()
 						return $null
 					}
 					return $SessionParameters
@@ -198,26 +182,22 @@ function Get-WinRMNetworkParameters
 				({
 						#check if host supports non SSL Port
 						[System.Net.Sockets.TcpClient]::new().ConnectAsync($_, 5985).Wait(100)
-					})
-				{
+					}){
 					$SessionParameters.Add("Port", 5985)
-					Try
-					{
+					Try{
 						$result = Test-WSMan @SessionParameters
 					}
-					Catch
-					{
-						Write-EventLog -LogName Devolutions -EntryType Warning -Source "DVLS" -EventId 1 -Message $Error[0].Exception.ToString()
-						#Write-Error $Error[0].Exception.ToString()
+					Catch{
+						#Write-EventLog -LogName Devolutions -EntryType Warning -Source "DVLS" -EventId 1 -Message $Error[0].Exception.ToString()
+						Write-Verbose  $Error[0].Exception.ToString()
 						return $null
 					}
 					return $SessionParameters
 				}
 				
-				default
-				{
-					Write-EventLog -LogName Devolutions -EntryType Warning -Source "DVLS" -EventId 1 -Message "No connectivity on TCP ports 5985 or 5986 to $Hostname"
-					#Write-Information "No connectivity on TCP ports 5985 or 5986 to $Hostname"
+				default{
+					#Write-EventLog -LogName Devolutions -EntryType Warning -Source "DVLS" -EventId 1 -Message "No connectivity on TCP ports 5985 or 5986 to $Hostname"
+					Write-Verbose  $Error[0].Exception.ToString()
 					return $null
 				}
 			}
@@ -225,8 +205,7 @@ function Get-WinRMNetworkParameters
 	}
 }
 
-function Get-WinRMSession
-{
+function Get-WinRMSession{
 	param (
 		[Parameter(Mandatory = $True)]
 		[ValidateNotNullOrEmpty()]
@@ -237,37 +216,31 @@ function Get-WinRMSession
 	)
 	
 	$WinRMNetworkParameters.Add("ErrorAction", "Stop")
-	Try
-	{
+	Try{
 		$RemoteSession = New-PSSession @WinRMNetworkParameters
 	}
-	Catch
-	{
+	Catch{
 		$WinRMNetworkParameters.Add("Credential", $Credential)
-		Try
-		{
+		Try{
 			$RemoteSession = New-PSSession @WinRMNetworkParameters
 		}
-		Catch
-		{
+		Catch{
 			$DNSsuffix = $hostname.SubString($hostname.IndexOf(".") + 1)
 			$NewUsername = $Credential.UserName + "@" + $DNSsuffix
 			$NewCredential = New-Object System.Management.Automation.PSCredential @($NewUsername, $Credential.Password)
 			$WinRMNetworkParameters.Credential = $NewCredential
-			Try
-			{
+			Try{
 				$RemoteSession = New-PSSession @WinRMNetworkParameters
 			}
-			Catch
-			{
-				Write-EventLog -LogName Devolutions -EntryType Warning -Source "DVLS" -EventId 1 -Message $Error[0].Exception.ToString()
-				#Write-Error $Error[0].Exception.ToString()
+			Catch{
+				#Write-EventLog -LogName Devolutions -EntryType Warning -Source "DVLS" -EventId 1 -Message $Error[0].Exception.ToString()
+				Write-Verbose  $Error[0].Exception.ToString()
 			}
 		}
 	}
-	If ($RemoteSession.State -eq 'Opened')
-	{
-		Write-EventLog -LogName Devolutions -EntryType Information -Source "DVLS" -EventId 1 -Message $("Powershell remoting session to " +$WinRMNetworkParameters.ComputerName + "created successfully")
+	If ($RemoteSession.State -eq 'Opened'){
+		#Write-EventLog -LogName Devolutions -EntryType Information -Source "DVLS" -EventId 1 -Message $("Powershell remoting session to " + $WinRMNetworkParameters.ComputerName + "created successfully")
+		Write-Verbose $("Powershell remoting session to " + $WinRMNetworkParameters.ComputerName + "created successfully")
 		return $RemoteSession
 	}
 }
@@ -280,24 +253,20 @@ Import-Module NetTCPIP
 
 #If a single host is specified and that host is also listening on port 636 it is likely a domain controller, in which case enumerating local accounts would be redundant
 #So instead enumerate active domain computers for the list of hosts to query for local accounts
-If (($HostsArray.Count -eq 1) -and ([System.Net.Sockets.TcpClient]::new().ConnectAsync($HostsArray[0], 636).Wait(100)))
-{
+If (($HostsArray.Count -eq 1) -and ([System.Net.Sockets.TcpClient]::new().ConnectAsync($HostsArray[0], 636).Wait(100))){
 	$DomainFQDN = $HostsArray[0]
 	$Credential = New-Object System.Management.Automation.PSCredential @("$LoginUsername@$DomainFQDN", $LoginPassword)
 	
-	Try
-	{
+	Try{
 		$ADSI = New-Object System.DirectoryServices.DirectoryEntry("LDAP://$DomainFQDN`:636", $Credential.UserName, $Credential.GetNetworkCredential().Password) -ErrorAction Stop
 		[void]$ADSI.ToString()
 	}
-	Catch
-	{
-		Write-EventLog -LogName Devolutions -EntryType Warning -Source "DVLS" -EventId 1 -Message $Error[0].Exception.ToString()
-		Write-Error $error[0].Exception.ToString()
+	Catch{
+		#Write-EventLog -LogName Devolutions -EntryType Warning -Source "DVLS" -EventId 1 -Message $Error[0].Exception.ToString()
+		Write-Verbose  $Error[0].Exception.ToString()
 	}
 	
-	If ($ADSI.distinguishedName -ne "")
-	{
+	If ($ADSI.distinguishedName -ne ""){
 		$Searcher = New-Object -TypeName System.DirectoryServices.DirectorySearcher($ADSI)
 		$Searcher.Filter = "(&(objectclass=computer)" #Find only computer objects
 		$Searcher.Filter += "(!useraccountcontrol:1.2.840.113556.1.4.804:=2)" #Exclude disable accounts
@@ -305,20 +274,17 @@ If (($HostsArray.Count -eq 1) -and ([System.Net.Sockets.TcpClient]::new().Connec
 		$Searcher.Filter += "(!serviceprincipalname=*MSClusterVirtualServer*)" #Exclude MS Clustering objects
 		$Searcher.Filter += "(!operatingSystem=Windows Server 2008*)" #Exclude legacy 2008 Operating system that does not support powershell remoting
 		
-		If ($HostsLDAPSearchFilter)
-		{
+		If ($HostsLDAPSearchFilter){
 			$Searcher.Filter += $HostsLDAPSearchFilter #Append any additional search filter from provider definition
 		}
 		$Searcher.Filter += ")"
 		
 		$DomainComputers = @()
 		$DomainComputers = $Searcher.FindAll()
-		If ($DomainComputers.Count -gt 0)
-		{
+		If ($DomainComputers.Count -gt 0){
 			If ($HostsArray) { $HostsArray.Clear() }
 			$HostsArray = @()
-			foreach ($Computer in $DomainComputers)
-			{
+			foreach ($Computer in $DomainComputers){
 				$HostsArray += $Computer.Properties['dnshostname']	
 			}
 		}
@@ -329,40 +295,32 @@ $HostAccounts = $HostsArray | ForEach-Object {
 	$Hostname = $_.Trim();
 	
 	$WinRMNetworkParameters = Get-WinRMNetworkParameters -HostName $Hostname
-	If ($WinRMNetworkParameters.Port)
-	{
+	If ($WinRMNetworkParameters.Port){
 		$PSSession = Get-WinRMSession -WinRMNetworkParameters $WinRMNetworkParameters -Credential $Credential
-		If ($PSSession)
-		{
-			Try
-			{
+		If ($PSSession){
+			Try{
 				$Results = $null
 				$Results = Invoke-Command -Session $PSSession -ArgumentList @($Hostname, $ExcludeDisabledAccountsInDiscovery) -ScriptBlock $RemoteHostScript
 			}
-			Catch
-			{
-				Write-EventLog -LogName Devolutions -EntryType Warning -Source "DVLS" -EventId 1 -Message $Error[0].Exception.ToString()
-				Write-Error $Error[0].Exception.ToString()
+			Catch{
+				#Write-EventLog -LogName Devolutions -EntryType Warning -Source "DVLS" -EventId 1 -Message $Error[0].Exception.ToString()
+				Write-Verbose  $Error[0].Exception.ToString()
 			}
 			
 			Remove-PSSession -Session $PSSession
 			$PSSession = $null
-			if ($Results -ne $null -and $Results -ne "")
-			{
+			if ($Results -ne $null -and $Results -ne ""){
 				#Exclude Local Administrator account if managed by LAPS
-				foreach ($account in $Results)
-				{
-					If (($account.UserName -eq "Administrator") -and (($domaincomputers | where {
+				foreach ($account in $Results){
+					If (($account.UserName -eq "Administrator") -and (($domaincomputers | Where-Object {
 									$_.Properties.dnshostname -eq $account.HostName
-								}).Properties."mslaps-passwordexpirationtime" -ne $null))
-					{
-						$Results = $Results | where { $_.Username -ne $account.UserName }
+								}).Properties."mslaps-passwordexpirationtime" -ne $null)){
+						$Results = $Results | Where-Object { $_.Username -ne $account.UserName }
 					}
 					
 					#Exclude Failover Cluster Local Identity
-					If ($account.UserName -eq "CLIUSR")
-					{
-						$Results = $Results | where { $_.Username -ne $account.UserName }
+					If ($account.UserName -eq "CLIUSR"){
+						$Results = $Results | Where-Object { $_.Username -ne $account.UserName }
 					}
 				}
 				return $Results
