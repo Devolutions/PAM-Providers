@@ -1,41 +1,63 @@
 {
-  "version": 1,
+  "version": 2,
   "template": {
-    "id": "b444aea6-7c24-401d-8fc8-e5e6c88670fd",
-    "name": "Azure KeyVault - Propagate new password",
-    "description": "Propagate your privileged account rotated password with the corresponding Azure KeyVault Secret.",
-    "imageName": "SampleAzureKeyVaultBlue",
     "command": "[CmdletBinding()]\nParam (\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$TenantID,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$ApplicationID,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$Password,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$KeyVaultName,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][String]$Name,\n  [Parameter(Mandatory = $True)][ValidateNotNullOrEmpty()][SecureString]$NewPassword\n)\n\n[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12\n\nIf ((Get-ExecutionPolicy) -NE 'RemoteSigned' -Or (Get-ExecutionPolicy) -NE 'Unrestricted') {\n  Set-ExecutionPolicy 'RemoteSigned' -Scope 'Process'\n}\n\n$ModulesToImport = @{\n  'Az.Accounts' = '2.10.3'\n  'Az.KeyVault' = '4.9.0'\n}\n\n# If your minimum version is older, run Update-Module -Name 'Az'\n$ModulesToImport.GetEnumerator() | ForEach-Object {\n  Try {\n    Import-Module -Name $PSItem.Key -MinimumVersion $PSItem.Value -ErrorAction 'Stop'\n  } Catch {\n    Write-Error (\"Failed to Import Module: {0}\" -F $Error[0].Exception.ToString())\n    Exit\n  }\n}\n\n$Credential = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $ApplicationID, $Password\n\nTry {\n  $Account = Connect-AzAccount -ServicePrincipal -TenantId $TenantId -Credential $Credential -ErrorAction 'Stop'\n} Catch {\n  Write-Error (\"Failed to Connect to Azure: {0}\" -F $Error[0].Exception.ToString())\n  Exit\n}\n\nTry {\n  $Vault = Get-AzKeyVault -VaultName $KeyVaultName -ErrorAction 'Stop'\n} Catch {\n  Write-Error (\"Failed to Retrieve Key Vault: {0}\" -F $Error[0].Exception.ToString())\n  Exit\n}\n\nIf ($Vault) {\n  Try {\n    $RetrievedSecret = $Vault | Get-AzKeyVaultSecret -Name $Name -ErrorAction 'Stop'\n  } Catch {\n    Write-Error (\"Failed to Retrieve Secrets: {0}\" -F $Error[0].Exception.ToString())\n  }\n\n  If ($RetrievedSecret) {\n    Try {\n      $Result = Set-AzKeyVaultSecret -Vault $Vault.VaultName -Name $RetrievedSecret.Name -SecretValue $NewPassword -ErrorAction 'Stop'\n    } Catch {\n      Write-Error \"Failed to retrieve password: $($Error[0].Exception.ToString())\"\n    }\n\n    If ($Result) {\n      Return $True\n    } Else {\n      Write-Error \"Failed to Update Secret\"\n    }\n  } Else {\n    Write-Error \"Failed to find secrets by name\"\n  }\n}",
     "configurationProperties": [
       {
-        "id": "bbf21554-f9bc-4684-a04b-38df236921fb",
-        "name": "TenantID",
-        "isMandatory": true
+        "id": "d6f2d6d1-fca9-4e83-9479-c334bfd7c252",
+        "isMandatory": true,
+        "name": "TenantID"
       },
       {
-        "id": "23c390d0-ae63-4e24-b333-365b24b88706",
-        "name": "ApplicationID",
-        "isMandatory": true
+        "id": "94631144-ba43-49b0-94f6-a2c17917461c",
+        "isMandatory": true,
+        "name": "ApplicationID"
       },
       {
-        "id": "a264f3a2-4b44-4b4e-bc76-3a52dc803875",
+        "id": "c382d07c-978d-4b63-b3f1-8b7083466561",
+        "isMandatory": true,
         "name": "Password",
-        "type": 5,
-        "isMandatory": true
+        "type": 5
       },
       {
-        "id": "674506f7-70c2-4951-b0e1-294361d35d87",
-        "name": "KeyVaultName",
-        "isMandatory": true
+        "id": "e9c244af-ddf1-4ad1-9677-b3982c1d1c3d",
+        "isMandatory": true,
+        "name": "KeyVaultName"
       }
     ],
-    "executionProperties": [
+    "description": "Propagate your privileged account rotated password with the corresponding Azure KeyVault Secret.",
+    "executionProperties": [],
+    "id": "ffe8a9e8-3c15-4073-826d-b3be55c7ec2c",
+    "imageName": "SampleAzureKeyVaultBlue",
+    "name": "Azure KeyVault - Propagate new password",
+    "parameters": [
       {
-        "id": "982c91a2-cda4-4780-870c-0bf90f0d2428",
+        "name": "TenantID",
+        "propertyId": "d6f2d6d1-fca9-4e83-9479-c334bfd7c252"
+      },
+      {
+        "name": "ApplicationID",
+        "propertyId": "94631144-ba43-49b0-94f6-a2c17917461c"
+      },
+      {
+        "name": "Password",
+        "propertyId": "c382d07c-978d-4b63-b3f1-8b7083466561"
+      },
+      {
+        "name": "KeyVaultName",
+        "propertyId": "e9c244af-ddf1-4ad1-9677-b3982c1d1c3d"
+      },
+      {
         "name": "Name",
-        "type": 8,
-        "isMandatory": true
+        "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73",
+        "source": 1
+      },
+      {
+        "name": "NewPassword",
+        "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
+        "source": 1
       }
-    ]
+    ],
+    "version": 2
   }
 }

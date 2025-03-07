@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "template": {
+    "command": "<#\n.SYNOPSIS\nResets multi-factor authentication methods for an Entra ID user.\n\n.DESCRIPTION\nThis script removes all authentication methods except password for a specified Entra ID (formerly Azure AD) user. It's \ndesigned to work with organizational policies that automatically re-add authentication methods.\n\nThe script connects to Microsoft Graph API, retrieves the user's authentication methods, and removes all non-password methods.\n\n.PARAMETER UserName\nThe username of the Entra ID user (without domain).\n\n.PARAMETER NewPassword\nThe new password for the user. This is not used in the current script but is a required parameter for propagation scripts.\n\n.PARAMETER TenantId\nThe ID of your Entra ID tenant.\n\n.PARAMETER ClientId\nThe client ID of the application registered in Entra ID for authentication.\n\n.PARAMETER ClientSecret\nThe client secret of the application registered in Entra ID for authentication.\n\n.PARAMETER TenantDomain\nThe domain name of your Entra ID tenant.\n\n.EXAMPLE\nPS> $clientSecret = ConvertTo-SecureString \"YourClientSecret\" -AsPlainText -Force\nPS> .\\script.ps1 -UserName \"johndoe\" -TenantId \"your-tenant-id\" -ClientId \"your-client-id\" -ClientSecret $clientSecret -TenantDomain \"yourdomain.com\"\n\nThis example resets the MFA methods for the user \"johndoe\" in the specified Entra ID tenant.\n\n.NOTES\nPrerequisites:\n- The application must have the following Microsoft Graph API permissions:\n  * User.ReadBasic.All\n  * UserAuthenticationMethod.ReadWrite.All\n\nEnsure these permissions are granted in the Azure portal for the application used.\n\nFor more information on authentication method management, see:\nhttps://learn.microsoft.com/en-us/graph/api/resources/authenticationmethods-overview?view=graph-rest-1.0#require-re-register-multifactor-authentication\n\n#>\n\n[CmdletBinding()]\nparam (\n    [Parameter(Mandatory)]\n    [string]$UserName,\n\n    [Parameter()]\n    [securestring]$NewPassword,\n\n    [Parameter(Mandatory)]\n    [string]$TenantId,\n\n    [Parameter(Mandatory)]\n    [string]$ClientId,\n\n    [Parameter(Mandatory)]\n    [securestring]$ClientSecret,\n\n    [Parameter(Mandatory)]\n    [string]$TenantDomain\n)\n\n$ErrorActionPreference = 'Stop'\n\nfunction decryptSecureString {\n    param(\n        [securestring]$SecureString\n    )\n    try {\n        $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureString)\n        [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)\n    } finally {\n        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)\n    }\n}\n\nfunction Get-GraphApiToken {\n    param ()\n    $body = @{\n        grant_type    = \"client_credentials\"\n        scope         = \"https://graph.microsoft.com/.default\"\n        client_id     = $ClientId\n        client_secret = (decryptSecureString $ClientSecret)\n    }\n    Invoke-RestMethod -Uri \"https://login.microsoftonline.com/$TenantId/oauth2/v2.0/token\" -Method Post -Body $body -ContentType \"application/x-www-form-urlencoded\"\n}\n\nfunction Invoke-GraphApiCall {\n    param (\n        [string]$Uri,\n        [string]$Method,\n        [object]$Body\n    )\n    \n    $params = @{\n        Uri     = $Uri\n        Method  = $Method\n        Headers = $script:headers\n    }\n    \n    if ($Body) {\n        $params.Body = $Body | ConvertTo-Json\n    }\n    \n    Invoke-RestMethod @params\n}\n\nfunction Get-UserAuthenticationMethod {\n    param (\n        [string]$UserId\n    )\n    $methodsUri = \"https://graph.microsoft.com/v1.0/users/$UserId/authentication/methods\"\n    $methods = Invoke-GraphApiCall -Uri $methodsUri -Method 'GET'\n    $methods.value\n\n    ## where .password is not null???\n}\n\nfunction Get-EntraIdUserId {\n    param (\n        [string]$UserPrincipalName\n    )\n\n    $uri = \"https://graph.microsoft.com/v1.0/users?$filter=userPrincipalName eq '$UserPrincipalName'\"\n    $response = Invoke-GraphApiCall -Uri $uri -Method 'GET'\n    $response.value[0].id\n    # if ($response.value -and $response.value.Count -eq 1) {\n    #     $response.value[0].id\n    # }\n}\n\n\nfunction Remove-AuthenticationMethod {\n    param (\n        [string]$UserId,\n        [string]$MethodId,\n        [string]$AuthType\n    )\n\n    $deleteUri = \"https://graph.microsoft.com/v1.0/users/$UserId/authentication/$AuthType/$MethodId\"\n    Invoke-GraphApiCall -Uri $deleteUri -Method 'DELETE'\n}\n\ntry {\n    $tokenResponse = Get-GraphApiToken\n    $script:headers = @{\n        \"Authorization\" = \"Bearer $($tokenResponse.access_token)\"\n        \"Content-Type\"  = \"application/json\"\n    }\n\n    $userPrincipalName = \"$UserName@$TenantDomain\"\n    Write-Debug \"UserPrincipalName: $userPrincipalName\"\n    if (-not ($userId = Get-EntraIdUserId -UserPrincipalName $userPrincipalName)) {\n        throw \"User not found: $UserPrincipalName\"\n    } else {\n        Write-Debug \"User found: $userId\"\n    }\n\n    $enabledAuthMethods = Get-UserAuthenticationMethod -UserId $userId\n\n    $mfaAuthMethods = $enabledAuthMethods | Where-Object -Property '@odata.type' -ne '#microsoft.graph.passwordAuthenticationMethod'\n    if (-not $mfaAuthMethods) {\n        Write-Debug \"No MFA methods to reset for user: $userPrincipalName\"\n    } else {\n        $authTypeToApiEndpointMap = @{\n            '#microsoft.graph.phoneAuthenticationMethod' = 'phone'\n            '#microsoft.graph.fido2AuthenticationMethod' = 'fido2'\n            '#microsoft.graph.emailAuthenticationMethod' = 'email'\n            '#microsoft.graph.microsoftAuthenticatorAuthenticationMethod' = 'microsoftAuthenticator'\n        }\n    \n        foreach ($authMethod in $mfaAuthMethods) {\n            $authType = '{0}Methods' -f $authTypeToApiEndpointMap[$authMethod.'@odata.type']\n            Write-Debug \"Removing auth method: $authMethod\"\n            Remove-AuthenticationMethod -UserId $userId -MethodId $authMethod.id -AuthType $authType\n        }\n    }\n    $true\n} catch {\n    $false\n    Write-Error \"An error occurred: $_\"  \n}",
+    "configurationProperties": [
+      {
+        "id": "1ac57bc9-2ee3-4260-ba75-9281ee341fb4",
+        "isMandatory": true,
+        "name": "TenantId"
+      },
+      {
+        "id": "dfe6be78-df25-4b92-a0a2-968e01616403",
+        "isMandatory": true,
+        "name": "ClientId"
+      },
+      {
+        "id": "0e478c06-a11c-4b8c-b0a9-d0f5d67a43e5",
+        "isMandatory": true,
+        "name": "TenantDomain"
+      },
+      {
+        "id": "a0f6ce30-13f2-4889-920a-9e23945546d9",
+        "isMandatory": true,
+        "name": "ClientSecret",
+        "type": 5
+      }
+    ],
+    "description": "Resets multi-factor authentication methods for an Entra ID user.",
+    "executionProperties": [
+      {
+        "id": "896dc51a-22f5-4017-9c74-5fc8f24691df",
+        "isMandatory": true,
+        "name": "UserName",
+        "type": 8
+      }
+    ],
+    "id": "fde5f8d6-1247-4a96-8f19-107bcf254064",
+    "imageName": "SampleTabletBlue",
+    "name": "Microsoft Entra ID MFA Registration Event"
+  }
+}
