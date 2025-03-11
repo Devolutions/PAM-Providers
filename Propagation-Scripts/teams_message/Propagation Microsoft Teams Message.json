@@ -1,0 +1,62 @@
+{
+  "version": 2,
+  "template": {
+    "command": "[CmdletBinding()]\nparam (\n    [Parameter(Mandatory)]\n    [uri]$WebhookUrl,\n\n    [Parameter(Mandatory)]\n    [string]$UserName,\n\n    [Parameter()]\n    [string]$Message,\n\n    [Parameter()]\n    [string]$ConnectorCardJsonFilePath,\n\n    [Parameter()]\n    [string]$ConnectorCardJson,\n\n    ## This is only a placeholder for AnyID and is not used\n    [Parameter()]\n    [securestring]$NewPassword\n)\n\nfunction invokeApiCall {\n    param (\n        [Parameter(Mandatory)]\n        [ValidateSet('GET', 'POST', 'PUT', 'DELETE')]\n        [string]$method,\n        [Parameter(Mandatory)]\n        [ValidateNotNullOrEmpty()]\n        [string]$body,\n        [Parameter(Mandatory)]\n        [ValidateNotNullOrEmpty()]\n        [hashtable]$headers\n    )\n\n    # Prepare parameters for the Invoke-RestMethod call\n    $irmParams = @{\n        Uri                = $WebhookUrl\n        Body               = $body\n        Headers            = $headers\n        Method             = $method\n        StatusCodeVariable = 'respStatus' # Capture the status code of the API response\n        SkipHttpErrorCheck = $true\n    }\n\n    try {\n        # Make the API call\n        $response = Invoke-RestMethod @irmParams -ErrorAction Stop\n\n        # Check the response status code\n        if ($respStatus -notin (1,200, 202)) {\n            throw \"API call failed with status code $respStatus : $($response.error.message)\"\n        }\n    }\n    catch {\n        throw \"Error occurred while making API call: $_\"\n    }\n}\n\ntry {\n    if ($Message) {\n        $body = ConvertTo-Json @{ text = $Message } -Compress\n    } elseif ($ConnectorCardJsonFilePath) {\n        $body = Get-Content -Path $ConnectorCardJsonFilePath -Raw | ConvertFrom-Json\n    } elseif ($ConnectorCardJson) {\n        $body = $ConnectorCardJson\n    } else {\n        throw \"No valid message parameter provided\"\n    }\n    if ($UserName) {\n        $body = $body -replace '{{username}}', $UserName\n    }\n}\ncatch {\n    throw \"Error preparing message body: $_\"\n}\n\n# Make the API call\ninvokeApiCall -method POST -body $body -headers @{\"Content-Type\" = \"application/json\"}\n",
+    "configurationProperties": [
+      {
+        "id": "5012b64c-d023-48aa-af7c-d3d3a9a40deb",
+        "isMandatory": true,
+        "name": "WebhookUrl"
+      },
+      {
+        "id": "373a236f-b7af-4be0-b989-999b12a20c32",
+        "isMandatory": true,
+        "name": "Message"
+      },
+      {
+        "id": "a4081792-4515-41fd-9b12-01540e99b471",
+        "isMandatory": true,
+        "name": "ConnectorCardJsonFilePath"
+      },
+      {
+        "id": "ded9bbe7-1d21-4fc3-89d7-9df8755b1787",
+        "isMandatory": true,
+        "name": "ConnectorCardJson"
+      }
+    ],
+    "description": "Creates a Teams message or connector cord.",
+    "executionProperties": [],
+    "id": "a31f13c3-bbbb-455f-98c2-16c9633827ec",
+    "imageName": "SampleContact2Forest",
+    "name": "Microsoft Teams Message",
+    "parameters": [
+      {
+        "name": "WebhookUrl",
+        "propertyId": "5012b64c-d023-48aa-af7c-d3d3a9a40deb"
+      },
+      {
+        "name": "Message",
+        "propertyId": "373a236f-b7af-4be0-b989-999b12a20c32"
+      },
+      {
+        "name": "ConnectorCardJsonFilePath",
+        "propertyId": "a4081792-4515-41fd-9b12-01540e99b471"
+      },
+      {
+        "name": "ConnectorCardJson",
+        "propertyId": "ded9bbe7-1d21-4fc3-89d7-9df8755b1787"
+      },
+      {
+        "name": "UserName",
+        "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73",
+        "source": 1
+      },
+      {
+        "name": "NewPassword",
+        "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
+        "source": 1
+      }
+    ],
+    "version": 2
+  }
+}

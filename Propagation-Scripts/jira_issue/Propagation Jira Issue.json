@@ -1,0 +1,99 @@
+{
+  "version": 2,
+  "template": {
+    "command": "[CmdletBinding()]\nParam (\n    [Parameter(Mandatory)]\n    [string]$SiteUrl,\n\n    [Parameter(Mandatory)]\n    [string]$JiraUsername,\n\n    [Parameter(Mandatory)]\n    [SecureString]$ApiToken,\n\n    [Parameter(Mandatory)]\n    [string]$ProjectKey,\n\n    [Parameter(Mandatory)]\n    [string]$IssueType,\n\n    [Parameter(Mandatory)]\n    [string]$UserName,\n\n    [Parameter(Mandatory)]\n    [string]$IssueSummary,\n\n    [Parameter()]\n    [string]$IssueKey,\n\n    [Parameter()]\n    [string]$Status,\n\n    ## This is only a placeholder for AnyID and is not used\n    [Parameter()]\n    [securestring]$NewPassword\n)\n\n$ErrorActionPreference = 'Stop'\n\n# Function to invoke JIRA API\nfunction Invoke-JiraApi {\n    [CmdletBinding()]\n    param (\n        [string]$Method,\n        [string]$Endpoint,\n        [hashtable]$Body\n    )\n\n    $apiUrl = \"$SiteUrl/rest/api/2$Endpoint\"\n    $plainTextApiToken = (New-Object PSCredential \"user\", $ApiToken).GetNetworkCredential().Password\n    $base64AuthInfo = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes((\"{0}:{1}\" -f $JiraUsername, $plainTextApiToken)))\n    \n    $headers = @{\n        Authorization  = \"Basic $base64AuthInfo\"\n        \"Content-Type\" = \"application/json\"\n    }\n\n    try {\n        $params = @{\n            Uri = $apiUrl\n            Method = $Method\n            Headers = $headers\n            StatusCodeVariable = 'StatusCode'\n        }\n        if ($Body) { $params['Body'] = ($Body | ConvertTo-Json -Depth 10) }\n        \n        $response = Invoke-RestMethod @params\n\n        [PSCustomObject]@{\n            Response   = $response\n            StatusCode = $StatusCode\n        }\n    } catch {\n        throw \"Error calling Jira API: $_\"\n    }\n}\n\n# Function to get project details\nfunction Get-JiraProject {\n    param ([string]$ProjectKey)\n    \n    $projectEndpoint = \"/project/$ProjectKey\"\n    $projectResult = Invoke-JiraApi -Method 'GET' -Endpoint $projectEndpoint\n    \n    if (-not $projectResult.Response) {\n        throw \"Project with key '$ProjectKey' does not exist.\"\n    }\n    \n    $projectResult.Response\n}\n\n# Function to get available issue types for a project\nfunction Get-JiraProjectIssueTypes {\n    param ([string]$ProjectKey)\n    \n    $issueTypesEndpoint = \"/project/$ProjectKey/statuses\"\n    $issueTypesResult = Invoke-JiraApi -Method 'GET' -Endpoint $issueTypesEndpoint\n    \n    $issueTypesResult.Response\n}\n\n# Function to create or update JIRA issue\nfunction Set-JiraIssue {\n    param (\n        [hashtable]$IssueData,\n        [string]$IssueKey\n    )\n\n    if ($IssueKey) {\n        $updateEndpoint = \"/issue/$IssueKey\"\n        $updateResult = Invoke-JiraApi -Method 'PUT' -Endpoint $updateEndpoint -Body $IssueData\n        if ($updateResult.StatusCode -ne 204) {\n            throw \"Failed to update JIRA ticket.\"\n        }\n    } else {\n        $newIssue = Invoke-JiraApi -Method 'POST' -Endpoint '/issue' -Body $IssueData\n        if (-not $newIssue.Response) {\n            throw \"Failed to create JIRA ticket.\"\n        }\n        $IssueKey = $newIssue.Response.key\n    }\n    \n    $IssueKey\n}\n\n# Function to update issue status\nfunction Set-JiraIssueStatus {\n    param (\n        [string]$IssueKey,\n        [string]$Status\n    )\n\n    $transitionsEndpoint = \"/issue/$IssueKey/transitions\"\n    $availableTransitions = Invoke-JiraApi -Method 'GET' -Endpoint $transitionsEndpoint\n\n    $transitionId = $availableTransitions.Response.transitions | \n        Where-Object { $_.to.name -eq $Status } | \n        Select-Object -ExpandProperty id\n\n    if (-not $transitionId) {\n        throw \"Unable to find a valid transition to status '$Status'\"\n    }\n\n    $transitionBody = @{\n        transition = @{ id = $transitionId }\n    }\n\n    $statusUpdateResult = Invoke-JiraApi -Method 'POST' -Endpoint $transitionsEndpoint -Body $transitionBody\n    if ($statusUpdateResult.StatusCode -ne 204) {\n        throw \"Failed to update issue status.\"\n    }\n}\n\ntry {\n    $ProjectKey = $ProjectKey.ToUpper()\n\n    # Validate IssueType\n    $validIssueTypes = @('Task', 'Bug', 'Story', 'Epic', 'Subtask', 'Incident', 'Service Request', 'Change', 'Problem')\n    if ($IssueType -and $IssueType -notin $validIssueTypes) {\n        throw \"Invalid IssueType. Allowed values are: $($validIssueTypes -join ', ')\"\n    }\n\n    # Validate Status if provided\n    $validStatuses = @('To Do', 'In Progress', 'Done')\n    if ($Status) {\n        if ($Status -notin $validStatuses) {\n            throw \"Invalid Status. Allowed values are: $($validStatuses -join ', ')\"\n        }\n        Set-JiraIssueStatus -IssueKey $updatedIssueKey -Status $Status\n    }\n\n    # Validate project and issue type\n    $project = Get-JiraProject -ProjectKey $ProjectKey\n    $availableIssueTypes = Get-JiraProjectIssueTypes -ProjectKey $ProjectKey\n    $matchingIssueType = $availableIssueTypes | Where-Object { $_.name -eq $IssueType } | Select-Object -First 1\n\n    if (-not $matchingIssueType) {\n        throw \"Issue type '$IssueType' is not available for this project.\"\n    }\n\n    # Prepare issue data\n    $issueData = @{\n        fields = @{\n            project   = @{ key = $ProjectKey }\n            summary   = $IssueSummary\n            issuetype = @{ id = $matchingIssueType.id }\n        }\n    }\n\n    if ($UserName) {\n        $issueData.fields.description = \"The user [$UserName]'s password has changed.\"\n    }\n\n    # Create or update issue\n    $updatedIssueKey = Set-JiraIssue -IssueData $issueData -IssueKey $IssueKey    \n\n    $true\n} catch {\n    $false\n    Write-Error \"Error creating or updating JIRA ticket: $_\"\n}",
+    "configurationProperties": [
+      {
+        "id": "11a0f81c-fd05-44ee-ae40-ab3f7370fcd0",
+        "isMandatory": true,
+        "name": "SiteUrl"
+      },
+      {
+        "id": "2211d7d9-4627-4d98-aadc-278271c55195",
+        "isMandatory": true,
+        "name": "JiraUserName"
+      },
+      {
+        "id": "fb753f0b-4028-491c-afc0-ca71ff998229",
+        "isMandatory": true,
+        "name": "ApiToken",
+        "type": 5
+      },
+      {
+        "id": "518ecfd3-9936-455a-b561-a5c19957f3d2",
+        "isMandatory": true,
+        "name": "ProjectKey"
+      },
+      {
+        "id": "ec72a7a7-fb77-4505-af3e-b8430baad289",
+        "isMandatory": true,
+        "name": "IssueType"
+      },
+      {
+        "id": "c16e8b6b-4b15-4e3a-b6be-eccfa0c8d6c0",
+        "isMandatory": true,
+        "name": "IssueKey"
+      },
+      {
+        "id": "ecf387cd-c665-4048-9b1d-52b4e0d18fcd",
+        "isMandatory": true,
+        "name": "Status"
+      },
+      {
+        "id": "eb1a6628-6d3f-4f9b-a94c-10370d85f660",
+        "isMandatory": true,
+        "name": "IssueSummary"
+      }
+    ],
+    "description": "Creates or updates a Jira issue.",
+    "executionProperties": [],
+    "id": "65a18e5a-9577-483a-9dc4-57eb810e7508",
+    "imageName": "SampleFlag2Blue",
+    "name": "Jira Issue",
+    "parameters": [
+      {
+        "name": "SiteUrl",
+        "propertyId": "11a0f81c-fd05-44ee-ae40-ab3f7370fcd0"
+      },
+      {
+        "name": "JiraUserName",
+        "propertyId": "2211d7d9-4627-4d98-aadc-278271c55195"
+      },
+      {
+        "name": "ApiToken",
+        "propertyId": "fb753f0b-4028-491c-afc0-ca71ff998229"
+      },
+      {
+        "name": "ProjectKey",
+        "propertyId": "518ecfd3-9936-455a-b561-a5c19957f3d2"
+      },
+      {
+        "name": "IssueType",
+        "propertyId": "ec72a7a7-fb77-4505-af3e-b8430baad289"
+      },
+      {
+        "name": "IssueKey",
+        "propertyId": "c16e8b6b-4b15-4e3a-b6be-eccfa0c8d6c0"
+      },
+      {
+        "name": "Status",
+        "propertyId": "ecf387cd-c665-4048-9b1d-52b4e0d18fcd"
+      },
+      {
+        "name": "IssueSummary",
+        "propertyId": "eb1a6628-6d3f-4f9b-a94c-10370d85f660"
+      },
+      {
+        "name": "UserName",
+        "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73",
+        "source": 1
+      },
+      {
+        "name": "NewPassword",
+        "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
+        "source": 1
+      }
+    ],
+    "version": 2
+  }
+}

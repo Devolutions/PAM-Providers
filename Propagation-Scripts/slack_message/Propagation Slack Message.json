@@ -1,0 +1,63 @@
+{
+  "version": 2,
+  "template": {
+    "command": "[CmdletBinding()]\nParam (\n    [Parameter(Mandatory)]\n    [string]$UserName,\n\n    [Parameter(Mandatory)]\n    [string]$Channel,\n\n    [Parameter(Mandatory)]\n    [securestring]$SlackOAuthToken,\n\n    [Parameter(Mandatory)]\n    [string]$WebhookUrl,\n\n    [Parameter()]\n    [string]$Message,\n\n    ## Not used. Only here for AnyId\n    [Parameter()]\n    [securestring]$NewPassword\n)\n\n#region Functions\n\nfunction decryptSecret ([securestring]$Secret) {\n    # Decrypts a secure string\n    try {\n        $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Secret)\n        [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)\n    } finally {\n        ## Clear the decrypted secret from memory\n        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)\n    }\n}\n\nfunction invokeSlackApiCall {\n    # Invokes an API call to Slack\n    param(\n        [Parameter(Mandatory)]\n        [ValidateNotNullOrEmpty()]\n        [hashtable]$RequestBody,\n    \n        [Parameter()]\n        [ValidateNotNullOrEmpty()]\n        [ValidateSet('POST')]\n        [string]$Method = 'POST'\n    )\n\n    # Setup the headers for the API call, including the API key\n    $headers = @{\n        'Content-type' = 'application/json'\n    }\n\n    # Initialize parameters for Invoke-RestMethod\n    $irmParams = @{\n        Uri                = $WebhookUrl\n        Method             = $Method # HTTP method (GET, POST, etc.)\n        Headers            = $headers # Headers including the API key\n        StatusCodeVariable = 'respStatus' # Capture the status code of the API response\n        SkipHttpErrorCheck = $true\n        Body               = ($RequestBody | ConvertTo-Json)\n    }\n\n    # Make the API call\n    $response = Invoke-RestMethod @irmParams\n    # If the response status code is not 200, throw the response as an error\n    if ($respStatus -ne 200 -or $response -ne 'ok') {\n        if ($response.errors) {\n            throw $response.errors.detail\n        } else {\n            throw $response\n        }\n    }\n}\n#endregion\n\n## This is useful to see what parameters DVLS passed to the script\nWrite-Output -InputObject \"Running script with parameters: $($PSBoundParameters | Out-String) as [$(whoami)]...\"\n\n# Set the preference to stop the script on any errors encountered\n$ErrorActionPreference = 'Stop'\n\nif (-not $Message) {\n    $Message = \"User [$UserName] password has been reset.\"\n} else {\n    $Message = \"User [$UserName] password has been reset : $Message\"\n}\n\n$requestBody = @{\n    'text' = $Message\n    'channel' = $Channel\n    'token' = (decryptSecret $SlackOAuthToken)\n}\n\ninvokeSlackApiCall -RequestBody $requestBody",
+    "configurationProperties": [
+      {
+        "id": "ae4cf490-ae9f-4ff2-9f94-3d56cc3c386d",
+        "isMandatory": true,
+        "name": "Channel"
+      },
+      {
+        "id": "0273261c-1a8e-42aa-a551-85ae324e04c9",
+        "isMandatory": true,
+        "name": "SlackOAuthToken",
+        "type": 5
+      },
+      {
+        "id": "a8e5892e-c624-40ea-a2ae-ecf85e09b2bd",
+        "isMandatory": true,
+        "name": "WebhookUrl"
+      },
+      {
+        "id": "8aec0da3-95af-44be-b851-151db43eae15",
+        "isMandatory": true,
+        "name": "Message"
+      }
+    ],
+    "description": "Sends a message to a Slack channel",
+    "executionProperties": [],
+    "id": "7003110f-42dd-4072-9a85-ebb8065b041a",
+    "imageName": "SampleLetterSBlack",
+    "name": "Slack Message",
+    "parameters": [
+      {
+        "name": "Channel",
+        "propertyId": "ae4cf490-ae9f-4ff2-9f94-3d56cc3c386d"
+      },
+      {
+        "name": "SlackOAuthToken",
+        "propertyId": "0273261c-1a8e-42aa-a551-85ae324e04c9"
+      },
+      {
+        "name": "WebhookUrl",
+        "propertyId": "a8e5892e-c624-40ea-a2ae-ecf85e09b2bd"
+      },
+      {
+        "name": "Message",
+        "propertyId": "8aec0da3-95af-44be-b851-151db43eae15"
+      },
+      {
+        "name": "UserName",
+        "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73",
+        "source": 1
+      },
+      {
+        "name": "NewPassword",
+        "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
+        "source": 1
+      }
+    ],
+    "version": 2
+  }
+}

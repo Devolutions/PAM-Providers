@@ -1,0 +1,63 @@
+{
+  "version": 2,
+  "template": {
+    "command": "[CmdletBinding()]\nparam(\n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [string]$Endpoint,\n    \n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [string]$EndpointUserName,\n\n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [securestring]$EndpointPassword,\n\n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [string]$ApplicationPoolIdentityUserName,\n\n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [securestring]$NewPassword,\n\n    [Parameter()]\n    [string]$ApplicationPoolName\n)\n\n# Output the script parameters and the current user running the script\nWrite-Output -InputObject \"Running script with parameters: $($PSBoundParameters | Out-String) as [$(whoami)]\"\n\n#region Functions\n# Function to create a new PSCredential object\nfunction newCredential([string]$UserName, [securestring]$Password) {\n    New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $UserName, $Password\n}\n#endregion\n\n# Create a new PSCredential object using the provided EndpointUserName and EndpointPassword\n$credential = newCredential $EndpointUserName $EndpointPassword\n\n# Define a script block to be executed remotely on the IIS server\n$scriptBlock = {\n    # Function to decrypt a secure string password\n    function decryptPassword {\n        param(\n            [securestring]$Password\n        )\n        try {\n            $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)\n            [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)\n        } finally {\n            ## Clear the decrypted password from memory\n            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)\n        }\n    }\n\n    $ErrorActionPreference = 'Stop'\n\n    $username = $args[0]\n    $pw = $args[1]\n    if ($args.Count -eq 3) { $requestedAppPoolName = $args[2] }\n    \n    # Check if the WebAdministration module is available, throw an error if not\n    if (-not (Get-Module -Name 'WebAdministration' -List)) {\n        throw \"The required WebAdministration module is not available on host [$(hostname)].\"\n    }\n    \n    # Import the WebAdministration module\n    Import-Module WebAdministration\n    \n    # Get all application pools on the IIS server\n    $allAppPools = Get-ChildItem IIS:\\AppPools\n    \n    # If ApplicationPoolName is provided, filter the application pools based on the provided names\n    if ($requestedAppPoolName) {\n        ## To process multiple app pools at once. This approach must be done because DVLS will not allow you to pass an array\n        ## of strings via a parameter.\n        $appPoolNames = $requestedAppPoolName -split ','\n        $allAppPools.where({ $_.Name -in $appPoolNames })\n    }\n    \n    # If no application pools are found, throw an error\n    if (!$allAppPools) {\n        throw \"No application pools found on the host [$(hostname)].\"\n    }\n    \n    # Filter application pools running under the provided ApplicationPoolIdentityUserName\n    # This will only find all of the application pools that have an idenity running as the requested username\n    if (-not ($appPoolsRunningUnderUserName = $allAppPools.where({ $_.processModel.userName -eq $username }))) {\n        throw \"No application pools found on [$(hostname)] running under the provided UserName of [$($username)].\"\n    }\n    \n    # Initialize an array to store the results of each application pool processing\n    $results = @()\n    \n    # Process each application pool\n    $appPoolsRunningUnderUserName | ForEach-Object {\n        try {\n            ## Set the new credentials on the application pool\n            Set-ItemProperty -Path \"IIS:\\AppPools\\$($_.name)\" -Name 'processModel' -Value @{UserName = $username; password = (decryptPassword($pw)) }\n            Write-Output \"Successfully reset application pool [$($_.name)]'s identity username of [$($username)].\"\n            $results += $true\n        } catch {\n            # If an error occurs, add false to the results array and output the error message\n            $results += $false\n            Write-Output -InputObject \"ERROR: $_\"\n        }\n    }\n    \n    # Return true if all application pool processing succeeded, false otherwise\n    $results -notcontains $false\n}\n\n# Invoke the script block remotely on the IIS server using the provided credentials\n$invParams = @{\n    ComputerName = $Endpoint\n    ScriptBlock = $scriptBlock\n    Credential = $credential\n}\n$invArgsList = $ApplicationPoolIdentityUserName,$NewPassword\nif ($PSBoundParameters.ContainsKey('ApplicationPoolName')) {\n    $invArgsList += $ApplicationPoolName\n}\n$invParams.ArgumentList = $invArgsList\nInvoke-Command @invParams",
+    "configurationProperties": [
+      {
+        "id": "6e5a9fe3-3c24-4585-b409-c8a7cc1775e3",
+        "isMandatory": true,
+        "name": "ApplicationPoolName"
+      },
+      {
+        "id": "8b5fea24-485b-47ff-8e95-9fa046c90f65",
+        "isMandatory": true,
+        "name": "Endpoint"
+      },
+      {
+        "id": "e179f9d2-4a90-499d-8bf1-1825e60c351b",
+        "isMandatory": true,
+        "name": "EndpointUserName"
+      },
+      {
+        "id": "1d708ace-f7c5-4c7d-acec-f1cdff92312e",
+        "isMandatory": true,
+        "name": "EndpointPassword",
+        "type": 5
+      }
+    ],
+    "description": "Changes an IIS application pool identity user password for one or multiple application pools on an IIS host.",
+    "executionProperties": [],
+    "id": "5060ec84-b8bd-45fe-93f1-3297a70635b6",
+    "imageName": "SampleWebBlue",
+    "name": "IIS Application Pool Identity",
+    "parameters": [
+      {
+        "name": "ApplicationPoolName",
+        "propertyId": "6e5a9fe3-3c24-4585-b409-c8a7cc1775e3"
+      },
+      {
+        "name": "Endpoint",
+        "propertyId": "8b5fea24-485b-47ff-8e95-9fa046c90f65"
+      },
+      {
+        "name": "EndpointUserName",
+        "propertyId": "e179f9d2-4a90-499d-8bf1-1825e60c351b"
+      },
+      {
+        "name": "EndpointPassword",
+        "propertyId": "1d708ace-f7c5-4c7d-acec-f1cdff92312e"
+      },
+      {
+        "name": "ApplicationPoolIdentityUserName",
+        "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73",
+        "source": 1
+      },
+      {
+        "name": "NewPassword",
+        "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
+        "source": 1
+      }
+    ],
+    "version": 2
+  }
+}

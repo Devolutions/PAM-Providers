@@ -1,0 +1,110 @@
+{
+  "version": 2,
+  "template": {
+    "command": "[CmdletBinding()]\nparam (\n    [Parameter(Mandatory)]\n    [string]$ServiceNowInstance,\n\n    [Parameter(Mandatory)]\n    [string]$OAuthClientId,\n\n    [Parameter(Mandatory)]\n    [securestring]$OAuthClientSecret,\n\n    [Parameter(Mandatory)]\n    [string]$ServiceNowUsername,\n\n    [Parameter(Mandatory)]\n    [securestring]$ServiceNowUserPassword,\n\n    [Parameter(Mandatory)]\n    [string]$UserName,\n\n    [Parameter()]\n    [ValidatePattern('^(INC\\d{7})?$')]\n    [string]$IncidentNumber,\n\n    [Parameter()]\n    [string]$Description,\n\n    [Parameter()]\n    [string]$WorkNotes,\n\n    [Parameter()]\n    [ValidateRange(0,7)]\n    [int]$State,\n\n    ## This is only a placeholder for AnyID and is not used\n    [Parameter()]\n    [securestring]$NewPassword\n)\n\nWrite-Output -InputObject \"Running script with parameters: $($PSBoundParameters | Out-String) as [$(whoami)]...\"\n\n$ErrorActionPreference = 'Stop'\n\n# Function to obtain an access token from ServiceNow\nfunction Get-ServiceNowAccessToken {\n    [CmdletBinding()]\n    param(\n        # The refresh token to use for obtaining a new access token (optional)\n        [Parameter()]\n        [ValidateNotNullOrEmpty()]\n        [string]$RefreshToken\n    )\n\n    $apiUrl = \"https://$ServiceNowInstance.service-now.com/oauth_token.do\"\n\n    $plainTextClientSecret = (New-Object PSCredential \"user\", $OAuthClientSecret).GetNetworkCredential().Password\n\n    $params = @{\n        Uri                = $apiUrl\n        SkipHttpErrorCheck = $true\n        Method             = 'POST'\n        StatusCodeVariable = 'StatusCode'\n        Body               = @{\n            grant_type    = \"password\"\n            client_id     = $OAuthClientId\n            client_secret = $plainTextClientSecret\n        }\n    }\n\n    if ($PSBoundParameters.ContainsKey('RefreshToken')) {\n        $params.Body.grant_type = 'refresh_token'\n        $params.Body.refresh_token = $RefreshToken\n    } else {\n        $params.Body.grant_type = 'password'\n        $params.Body.username = $ServiceNowUsername\n        $params.Body.password = (New-Object PSCredential \"user\", $ServiceNowUserPassword).GetNetworkCredential().Password\n    }\n\n    $response = Invoke-RestMethod @params\n    if ($StatusCode -ne 200) {\n        throw \"Failed to generate access token. Error: $($response.error_description)\"\n    }\n\n    $response\n}\n\n# Function to make API calls to ServiceNow\nfunction Invoke-ServiceNowApi {\n    [CmdletBinding()]\n    param (\n        # The endpoint to call\n        [Parameter(Mandatory)]\n        [ValidateNotNullOrEmpty()]\n        [string]$Endpoint,\n\n        # The HTTP method to use (optional, defaults to GET)\n        [ValidateSet('GET', 'POST', 'PATCH')]\n        [string]$Method = 'GET',\n\n        # The body to send with the request (optional)\n        [Parameter()]\n        [object]$Body\n    )\n\n    $uri = \"https://$ServiceNowInstance.service-now.com/api/now/$Endpoint\"\n    $headers = @{\n        'Authorization' = \"Bearer $script:accessToken\"\n    }\n\n    $params = @{\n        Uri                = $uri\n        Method             = $Method\n        Headers            = $headers\n        SkipHttpErrorCheck = $true\n        StatusCodeVariable = 'StatusCode'\n        ContentType        = 'application/json'\n    }\n    if ($Body) {\n        $params['Body'] = ($Body | ConvertTo-Json)\n    }\n\n    $response = Invoke-RestMethod @params\n    if ($StatusCode -notin 200, 201) {\n        throw \"API call failed with status code: $StatusCode, $($response.error.message) -- $($response.error.detail)\"\n    }\n    $response\n}\n \n# Function to retrieve a specific incident from ServiceNow\nfunction Get-ServiceNowIncident {\n    [CmdletBinding()]\n    param (\n        # The incident number to retrieve\n        [Parameter(Mandatory)]\n        [ValidateNotNullOrEmpty()]\n        [string]$IncidentNumber\n    )\n\n    # Construct the query to find the incident by number\n    $query = \"number=$IncidentNumber\"\n    $endpoint = \"table/incident?sysparm_query=$query&sysparm_limit=1\"\n    \n    $incident = Invoke-ServiceNowApi -Endpoint $endpoint -Method 'GET'\n        \n    if ($incident.result.Count -gt 0) {\n        $incident.result[0]\n    }\n}\n\n# Function to update an existing incident in ServiceNow\nfunction Update-ServiceNowIncident {\n    [CmdletBinding()]\n    param (\n        # The ID of the incident to update\n        [Parameter(Mandatory)]\n        [string]$IncidentId,\n\n        # The fields to update\n        [Parameter(Mandatory)]\n        [hashtable]$Fields\n    )\n\n    Invoke-ServiceNowApi -Endpoint \"table/incident/$IncidentId\" -Method 'PATCH' -Body $Fields\n}\n\n# Function to create a new incident in ServiceNow\nfunction New-ServiceNowIncident {\n    [CmdletBinding()]\n    param (\n        # The fields for the new incident\n        [Parameter(Mandatory)]\n        [hashtable]$Fields\n    )\n\n    Invoke-ServiceNowApi -Endpoint \"table/incident\" -Method 'POST' -Body $Fields\n}\n\n# Get the access token\n$script:accessToken = (Get-ServiceNowAccessToken).access_token\n\n# Prepare the fields for creating or updating an incident\n$fields = @{\n    short_description = \"The username [$UserName]'s password has changed.\"\n    description       = $Description\n    work_notes        = $WorkNotes\n}\n\n## Not validated in the parameter because AnyID always passes a value of 0 if not provided in the AnyId prop script\nif ($State -gt 0) {\n    $fields.state = $State\n}\n\n# Remove any null values from the fields hashtable\n$populatedFields = @{}\n$fields.GetEnumerator() | Where-Object { $_.Value } | ForEach-Object { $populatedFields[$_.Key] = $_.Value }\n\n# Ensure at least one field is provided\nif ($populatedFields.Count -eq 0) {\n    throw \"No fields provided to create/update an incident.\"\n}\n\n# Update existing incident if provided, otherwise create a new one\nif ($IncidentNumber) {\n    $existingIncident = Get-ServiceNowIncident -IncidentNumber $IncidentNumber\n\n    if ($existingIncident) {\n        $null = Update-ServiceNowIncident -IncidentId $existingIncident.sys_id -Fields $populatedFields\n    } else {\n        throw \"Incident $IncidentNumber not found\"\n    }\n} else {\n    $null = New-ServiceNowIncident -Fields $populatedFields\n}\n\n# Indicate success\n$true",
+    "configurationProperties": [
+      {
+        "id": "33850c07-aa38-42fc-8781-db8de5c8b61c",
+        "isMandatory": true,
+        "name": "ServiceNowInstance"
+      },
+      {
+        "id": "807ac3d1-5cc9-4318-8046-4a8e4bc5bcde",
+        "isMandatory": true,
+        "name": "OAuthClientId"
+      },
+      {
+        "id": "a1bc0d9f-9e13-49e3-a96d-bdd491244a0b",
+        "isMandatory": true,
+        "name": "OAuthClientSecret",
+        "type": 5
+      },
+      {
+        "id": "a2519052-9f4b-4445-ba50-c630f8fcf35b",
+        "isMandatory": true,
+        "name": "ServiceNowUserName"
+      },
+      {
+        "id": "dc211d54-e40e-4040-a5a7-dfc5d126c742",
+        "isMandatory": true,
+        "name": "ServiceNowUserPassword",
+        "type": 5
+      },
+      {
+        "id": "37388587-17cf-4f02-bd66-f42da1cfc07d",
+        "isMandatory": true,
+        "name": "Description"
+      },
+      {
+        "id": "93ded969-85f9-41db-aaef-8ab30ca2431a",
+        "isMandatory": true,
+        "name": "IncidentNumber"
+      },
+      {
+        "id": "74d0c313-d700-416b-ba01-ab346a069da3",
+        "isMandatory": true,
+        "name": "WorkNotes"
+      },
+      {
+        "id": "c8c7ce36-c759-4322-b093-f5f3fd961ae7",
+        "isMandatory": true,
+        "name": "State",
+        "type": 1
+      }
+    ],
+    "description": "Creates or updates ServiceNow incidents",
+    "executionProperties": [],
+    "id": "dab61e5f-496e-4607-9972-dd7fa69f278d",
+    "imageName": "",
+    "name": "ServiceNow Incident",
+    "parameters": [
+      {
+        "name": "ServiceNowInstance",
+        "propertyId": "33850c07-aa38-42fc-8781-db8de5c8b61c"
+      },
+      {
+        "name": "OAuthClientId",
+        "propertyId": "807ac3d1-5cc9-4318-8046-4a8e4bc5bcde"
+      },
+      {
+        "name": "OAuthClientSecret",
+        "propertyId": "a1bc0d9f-9e13-49e3-a96d-bdd491244a0b"
+      },
+      {
+        "name": "ServiceNowUserName",
+        "propertyId": "a2519052-9f4b-4445-ba50-c630f8fcf35b"
+      },
+      {
+        "name": "ServiceNowUserPassword",
+        "propertyId": "dc211d54-e40e-4040-a5a7-dfc5d126c742"
+      },
+      {
+        "name": "Description",
+        "propertyId": "37388587-17cf-4f02-bd66-f42da1cfc07d"
+      },
+      {
+        "name": "IncidentNumber",
+        "propertyId": "93ded969-85f9-41db-aaef-8ab30ca2431a"
+      },
+      {
+        "name": "WorkNotes",
+        "propertyId": "74d0c313-d700-416b-ba01-ab346a069da3"
+      },
+      {
+        "name": "State",
+        "propertyId": "c8c7ce36-c759-4322-b093-f5f3fd961ae7"
+      },
+      {
+        "name": "UserName",
+        "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73",
+        "source": 1
+      },
+      {
+        "name": "NewPassword",
+        "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
+        "source": 1
+      }
+    ],
+    "version": 2
+  }
+}
