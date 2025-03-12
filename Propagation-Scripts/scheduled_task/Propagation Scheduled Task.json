@@ -1,0 +1,72 @@
+{
+  "version": 2,
+  "template": {
+    "command": "[CmdletBinding()]\nparam(\n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [string]$Endpoint,\n    \n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [string]$EndpointUserName,\n\n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [securestring]$EndpointPassword,\n\n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [string]$AccountUserName,\n\n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [securestring]$NewPassword,\n\n    [Parameter()]\n    [string]$ScheduledTaskName,\n\n    [Parameter()]\n    [ValidatePattern('^\\\\(?:[^\\\\]+\\\\)+\\s*(?:,\\s*\\\\(?:[^\\\\]+\\\\)+)*$')]\n    [string]$ScheduledTaskPath\n)\n\n# Output the script parameters and the current user running the script\nWrite-Output -InputObject \"Running script with parameters: $($PSBoundParameters | Out-String) as [$(whoami)]\"\n\n#region Functions\n# Function to create a new PSCredential object\nfunction newCredential([string]$UserName, [securestring]$Password) {\n    New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $UserName, $Password\n}\n#endregion\n\n# Create a new PSCredential object using the provided EndpointUserName and EndpointPassword\n$credential = newCredential $EndpointUserName $EndpointPassword\n\n# Define a script block to be executed remotely on the Windows server\n$scriptBlock = {\n\n    #region functions\n    # Function to decrypt a secure string password\n    function decryptPassword {\n        param(\n            [securestring]$Password\n        )\n        try {\n            $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)\n            [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)\n        } finally {\n            ## Clear the decrypted password from memory\n            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)\n        }\n    }\n    #endregion\n\n    # Set the error action preference to stop execution if an error occurs\n    $ErrorActionPreference = 'Stop'\n\n    ## Assigning to variables inside the scriptblock allows mocking of args with Pester\n    $username = $args[0]\n    $pw = $args[1]\n    $scheduledTaskNames = $args[2]\n    $scheduledTaskPaths = $args[3]\n\n    #region Find all of the requested scheduled tasks\n    $getSchedTaskParams = @{}\n    if ($scheduledTaskNames) {\n        $getSchedTaskParams.TaskName = $scheduledTaskNames\n    }\n    if ($scheduledTaskPaths) {\n        $getSchedTaskParams.TaskPath = $scheduledTaskPaths\n    }\n    # Get scheduled tasks based on the provided task names and paths, and filter by the specified user\n    [array]$schedTasks = Get-ScheduledTask @getSchedTaskParams | Where-Object { $_.Principal.UserId -eq $userName }\n    if (-not $schedTasks) {\n        throw \"No scheduled tasks found on [{0}] running as [{1}] could be found.\" -f (hostname), $username\n    } elseif ($scheduledTaskNames -and ($notFoundScheduledTasks = $scheduledTaskNames.where({ $_ -notin $schedTasks.TaskName }))) {\n        throw \"The following scheduled tasks could not be found on host [{0}] running as [{1}]: {2}\" -f (hostname), $username, ($notFoundScheduledTasks -join ',')\n    }\n    #endregion\n\n    # Process each scheduled task and update the user password\n    [array]$results = foreach ($schedTask in $schedTasks) {\n        try {\n            $null = Set-ScheduledTask -TaskName $schedTask.TaskName -Taskpath  $schedTask.Taskpath -User $username -Password (decryptPassword($pw))\n            $true\n        } catch {\n            if ($_.Exception.Message -match 'The user name or password is incorrect') {\n                throw \"NewPassword for [{0}] user account does not match provider for scheduled task [{1}] running on [{2}] host.\" -f $username, $schedTask.TaskName, (hostname)\n            } else {\n                throw $_\n            }\n        }\n    }\n    # Check if all scheduled tasks were successfully updated\n    $results.Count -eq $schedTasks.Count\n}\n\n## To process multiple scheduled tasks at once. This approach must be done because DVLS will not allow you to pass an array\n## of strings via a parameter.\n$scheduledTaskNames = $ScheduledTaskName -split ','\n$scheduledTaskPaths = $ScheduledTaskPath -split ','\n\n# Define parameters for Invoke-Command\n$invParams = @{\n    ComputerName = $Endpoint\n    ScriptBlock  = $scriptBlock\n    Credential   = $credential\n    ArgumentList = $AccountUserName, $NewPassword, $scheduledTaskNames, $scheduledTaskPaths\n}\n# Invoke the script block on the remote Windows server\nInvoke-Command @invParams\n\n",
+    "configurationProperties": [
+      {
+        "id": "843dd436-3a1c-468f-9ef6-9136efccad47",
+        "isMandatory": true,
+        "name": "Endpoint"
+      },
+      {
+        "id": "b332c0a8-dc39-4b08-bf06-0fc73415befc",
+        "isMandatory": true,
+        "name": "EndpointUserName"
+      },
+      {
+        "id": "f156fdca-5708-4523-b7f9-1dee7f20ee9d",
+        "isMandatory": true,
+        "name": "EndpointPassword",
+        "type": 3
+      },
+      {
+        "id": "c7d21df2-c684-4434-ab25-b8bc12cf34f1",
+        "isMandatory": true,
+        "name": "ScheduledTaskName"
+      },
+      {
+        "id": "e91e4354-f618-4d5a-a945-f3ea49c40f6a",
+        "isMandatory": true,
+        "name": "ScheduledTaskPath"
+      }
+    ],
+    "description": "Updates a Scheduled task user password for one or more Windows hosts.",
+    "executionProperties": [],
+    "id": "df904bae-a0ce-495a-951b-6bc60a9b02be",
+    "imageName": "",
+    "name": "Scheduled Task",
+    "parameters": [
+      {
+        "name": "Endpoint",
+        "propertyId": "843dd436-3a1c-468f-9ef6-9136efccad47"
+      },
+      {
+        "name": "EndpointUserName",
+        "propertyId": "b332c0a8-dc39-4b08-bf06-0fc73415befc"
+      },
+      {
+        "name": "EndpointPassword",
+        "propertyId": "f156fdca-5708-4523-b7f9-1dee7f20ee9d"
+      },
+      {
+        "name": "ScheduledTaskName",
+        "propertyId": "c7d21df2-c684-4434-ab25-b8bc12cf34f1"
+      },
+      {
+        "name": "ScheduledTaskPath",
+        "propertyId": "e91e4354-f618-4d5a-a945-f3ea49c40f6a"
+      },
+      {
+        "name": "AccountUserName",
+        "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73",
+        "source": 1
+      },
+      {
+        "name": "NewPassword",
+        "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
+        "source": 1
+      }
+    ],
+    "version": 2
+  }
+}
