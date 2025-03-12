@@ -12,7 +12,7 @@
         "id": "27de8eef-499b-4136-8456-b4234968719c",
         "isMandatory": true,
         "name": "WorkspaceKey",
-        "type": 5
+        "type": 3
       }
     ],
     "description": "Sends a password change notification to Microsoft Sentinel.",

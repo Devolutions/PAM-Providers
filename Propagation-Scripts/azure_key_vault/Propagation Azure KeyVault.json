@@ -17,7 +17,7 @@
         "id": "c382d07c-978d-4b63-b3f1-8b7083466561",
         "isMandatory": true,
         "name": "Password",
-        "type": 5
+        "type": 3
       },
       {
         "id": "e9c244af-ddf1-4ad1-9677-b3982c1d1c3d",

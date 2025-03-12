@@ -17,7 +17,7 @@
         "id": "fb753f0b-4028-491c-afc0-ca71ff998229",
         "isMandatory": true,
         "name": "ApiToken",
-        "type": 5
+        "type": 3
       },
       {
         "id": "518ecfd3-9936-455a-b561-a5c19957f3d2",

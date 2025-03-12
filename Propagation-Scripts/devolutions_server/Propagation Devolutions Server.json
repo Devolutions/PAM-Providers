@@ -17,7 +17,7 @@
         "id": "ec84b283-a454-455d-9397-f3726bc715e2",
         "isMandatory": true,
         "name": "ApplicationSecret",
-        "type": 5
+        "type": 3
       },
       {
         "id": "4ec0e400-8d68-4032-a46f-33f55bafe428",

@@ -22,7 +22,7 @@
         "id": "0984b931-686c-47b4-8b7f-e35530dc806f",
         "isMandatory": true,
         "name": "ClientSecret",
-        "type": 5
+        "type": 3
       }
     ],
     "description": "Resets multi-factor authentication methods for an Entra ID user.",

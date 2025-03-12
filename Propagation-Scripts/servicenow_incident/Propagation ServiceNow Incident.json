@@ -17,7 +17,7 @@
         "id": "a1bc0d9f-9e13-49e3-a96d-bdd491244a0b",
         "isMandatory": true,
         "name": "OAuthClientSecret",
-        "type": 5
+        "type": 3
       },
       {
         "id": "a2519052-9f4b-4445-ba50-c630f8fcf35b",

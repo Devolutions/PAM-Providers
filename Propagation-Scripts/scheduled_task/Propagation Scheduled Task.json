@@ -17,7 +17,7 @@
         "id": "f156fdca-5708-4523-b7f9-1dee7f20ee9d",
         "isMandatory": true,
         "name": "EndpointPassword",
-        "type": 5
+        "type": 3
       },
       {
         "id": "c7d21df2-c684-4434-ab25-b8bc12cf34f1",

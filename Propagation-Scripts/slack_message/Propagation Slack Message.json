@@ -12,7 +12,7 @@
         "id": "0273261c-1a8e-42aa-a551-85ae324e04c9",
         "isMandatory": true,
         "name": "SlackOAuthToken",
-        "type": 5
+        "type": 3
       },
       {
         "id": "a8e5892e-c624-40ea-a2ae-ecf85e09b2bd",

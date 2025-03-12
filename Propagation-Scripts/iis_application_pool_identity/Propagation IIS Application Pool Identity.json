@@ -22,7 +22,7 @@
         "id": "1d708ace-f7c5-4c7d-acec-f1cdff92312e",
         "isMandatory": true,
         "name": "EndpointPassword",
-        "type": 5
+        "type": 3
       }
     ],
     "description": "Changes an IIS application pool identity user password for one or multiple application pools on an IIS host.",
