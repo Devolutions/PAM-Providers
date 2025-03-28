@@ -21,11 +21,11 @@ Param (
 [System.Management.Automation.ScriptBlock]$RemoteHostScript = {
 	Param ($UserNameParam,
 		$NewPasswordParam)
-	
+
 	If ($DebugOutput)	{
 		Write-Verbose ("[Debug] Retrieving Local User, '{0}'" -F $UserNameParam) -Verbose:$True
 	}
-	
+
 	# Microsoft.PowerShell.LocalAccounts module not available in 32-bit PowerShell on 64-bit systems.
 
 	$User = [ADSI] "WinNT://./$UserNameParam"
@@ -33,12 +33,12 @@ Param (
 		Write-Error "Username Does Not Exist"
 		Exit
 	}
-	
+
 	If ($User){
 		If ($DebugOutput){
 			Write-Verbose ("[Debug] User, '{0}' has the status of '{1}' and description of, '{2}'" -F $User.Name, $User.Enabled, $User.Description) -Verbose:$True
 		}
-		
+
 		Try{
 			If ($DebugOutput){
 				Write-Verbose ("[Debug] Attempting Password Change of, '{0}'" -F $User.Name) -Verbose:$True
@@ -51,7 +51,7 @@ Param (
 			Write-Error ("Failed To Set Password: {0}" -F $Error[0].Exception.ToString())
 			Exit
 		}
-		
+
 		Write-Output "Success"
 	}
 	Else{
@@ -65,13 +65,13 @@ function Get-WinRMNetworkParameters{
 		[Parameter(Mandatory = $True)]
 		[ValidateNotNullOrEmpty()]
 		[String]$HostName)
-	
+
 	switch ($HostName){
 		({ (Resolve-DnsName -Name $_ -ErrorAction SilentlyContinue).IPAddress }){
 			$SessionParameters = @{
 				ComputerName = $Hostname
 			}
-			
+
 			switch ($_){
 				({
 						#check if host supports SSL Port
@@ -88,7 +88,7 @@ function Get-WinRMNetworkParameters{
 					}
 					return $SessionParameters
 				}
-				
+
 				({
 						#check if host supports non SSL Port
 						[System.Net.Sockets.TcpClient]::new().ConnectAsync($_, 5985).Wait(100)
@@ -103,7 +103,7 @@ function Get-WinRMNetworkParameters{
 					}
 					return $SessionParameters
 				}
-				
+
 				default{
 					Write-Error "No connectivity on TCP ports 5985 or 5986 to $Hostname"
 				}
@@ -121,7 +121,7 @@ function Get-WinRMSession{
 		[ValidateNotNullOrEmpty()]
 		[System.Management.Automation.PSCredential]$Credential
 	)
-	
+
 	$WinRMNetworkParameters.Add("ErrorAction", "Stop")
 	Try{
 		$RemoteSession = New-PSSession @WinRMNetworkParameters
@@ -155,12 +155,15 @@ If ($WinRMNetworkParameters.Port){
 	$PSSession = Get-WinRMSession -WinRMNetworkParameters $WinRMNetworkParameters -Credential $Credential
 	If ($PSSession){
 		Try{
-			$Results = Invoke-Command -Session $PSSession -ArgumentList @($UserName, $NewPassword) -ScriptBlock $RemoteHostScript
+			$Results = Invoke-Command -Session $PSSession -ArgumentList @($UserName, $NewPassword) -ErrorVariable errmsg -ScriptBlock $RemoteHostScript
+			if ($errmsg -ne $null -and $errmsg -ne "") {
+                Write-Error $errmsg
+            }
 		}
 		Catch{
 			Write-Error $Error[0].Exception.ToString()
 		}
-		
+
 		Remove-PSSession -Session $PSSession
 		$PSSession = $null
 		If ($Results -EQ "Success"){
@@ -168,4 +171,3 @@ If ($WinRMNetworkParameters.Port){
 		}
 	}
 }
-
