@@ -9,7 +9,7 @@
         "name": "Channel"
       },
       {
-        "id": "0273261c-1a8e-42aa-a551-85ae324e04c9",
+        "id": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
         "isMandatory": true,
         "name": "SlackOAuthToken",
         "type": 3
@@ -37,7 +37,7 @@
       },
       {
         "name": "SlackOAuthToken",
-        "propertyId": "0273261c-1a8e-42aa-a551-85ae324e04c9"
+        "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
       },
       {
         "name": "WebhookUrl",

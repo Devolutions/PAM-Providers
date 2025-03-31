@@ -9,7 +9,7 @@
         "name": "WorkspaceId"
       },
       {
-        "id": "27de8eef-499b-4136-8456-b4234968719c",
+        "id": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
         "isMandatory": true,
         "name": "WorkspaceKey",
         "type": 3
@@ -27,7 +27,7 @@
       },
       {
         "name": "WorkspaceKey",
-        "propertyId": "27de8eef-499b-4136-8456-b4234968719c"
+        "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
       },
       {
         "name": "UserName",

@@ -14,7 +14,7 @@
         "name": "OAuthClientId"
       },
       {
-        "id": "a1bc0d9f-9e13-49e3-a96d-bdd491244a0b",
+        "id": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
         "isMandatory": true,
         "name": "OAuthClientSecret",
         "type": 3
@@ -68,7 +68,7 @@
       },
       {
         "name": "OAuthClientSecret",
-        "propertyId": "a1bc0d9f-9e13-49e3-a96d-bdd491244a0b"
+        "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
       },
       {
         "name": "ServiceNowUserName",

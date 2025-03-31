@@ -14,7 +14,7 @@
         "name": "EndpointUserName"
       },
       {
-        "id": "cc577b1f-58bb-4e5e-a41a-a3371f45d9b1",
+        "id": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
         "isMandatory": true,
         "name": "EndpointPassword",
         "type": 3
@@ -51,7 +51,7 @@
       },
       {
         "name": "EndpointPassword",
-        "propertyId": "cc577b1f-58bb-4e5e-a41a-a3371f45d9b1"
+        "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
       },
       {
         "name": "ServiceName",

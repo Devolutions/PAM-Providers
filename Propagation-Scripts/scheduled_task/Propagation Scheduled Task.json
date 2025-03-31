@@ -14,7 +14,7 @@
         "name": "EndpointUserName"
       },
       {
-        "id": "f156fdca-5708-4523-b7f9-1dee7f20ee9d",
+        "id": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
         "isMandatory": true,
         "name": "EndpointPassword",
         "type": 3
@@ -46,7 +46,7 @@
       },
       {
         "name": "EndpointPassword",
-        "propertyId": "f156fdca-5708-4523-b7f9-1dee7f20ee9d"
+        "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
       },
       {
         "name": "ScheduledTaskName",
