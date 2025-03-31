@@ -9,7 +9,7 @@
         "name": "SplunkHost"
       },
       {
-        "id": "80f1e25c-3b99-4f6e-8e6e-aabf19c4d8ec",
+        "id": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
         "isMandatory": true,
         "name": "HECToken",
         "type": 3
@@ -37,7 +37,7 @@
       },
       {
         "name": "HECToken",
-        "propertyId": "80f1e25c-3b99-4f6e-8e6e-aabf19c4d8ec"
+        "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
       },
       {
         "name": "Source",

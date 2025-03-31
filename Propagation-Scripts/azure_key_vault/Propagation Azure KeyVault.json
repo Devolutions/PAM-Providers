@@ -14,7 +14,7 @@
         "name": "ApplicationID"
       },
       {
-        "id": "c382d07c-978d-4b63-b3f1-8b7083466561",
+        "id": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
         "isMandatory": true,
         "name": "Password",
         "type": 3
@@ -41,7 +41,7 @@
       },
       {
         "name": "Password",
-        "propertyId": "c382d07c-978d-4b63-b3f1-8b7083466561"
+        "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
       },
       {
         "name": "KeyVaultName",

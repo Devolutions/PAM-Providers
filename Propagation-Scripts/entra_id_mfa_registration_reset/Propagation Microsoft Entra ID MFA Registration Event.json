@@ -19,7 +19,7 @@
         "name": "TenantDomain"
       },
       {
-        "id": "0984b931-686c-47b4-8b7f-e35530dc806f",
+        "id": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
         "isMandatory": true,
         "name": "ClientSecret",
         "type": 3
@@ -45,7 +45,7 @@
       },
       {
         "name": "ClientSecret",
-        "propertyId": "0984b931-686c-47b4-8b7f-e35530dc806f"
+        "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
       },
       {
         "name": "UserName",

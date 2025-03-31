@@ -14,7 +14,7 @@
         "name": "JiraUserName"
       },
       {
-        "id": "fb753f0b-4028-491c-afc0-ca71ff998229",
+        "id": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
         "isMandatory": true,
         "name": "ApiToken",
         "type": 3
@@ -61,7 +61,7 @@
       },
       {
         "name": "ApiToken",
-        "propertyId": "fb753f0b-4028-491c-afc0-ca71ff998229"
+        "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
       },
       {
         "name": "ProjectKey",

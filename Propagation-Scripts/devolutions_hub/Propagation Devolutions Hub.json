@@ -14,7 +14,7 @@
         "name": "ApplicationKey"
       },
       {
-        "id": "2214ebfd-9d08-42d5-bad1-1752d21ac977",
+        "id": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
         "isMandatory": true,
         "name": "ApplicationSecret",
         "type": 3
@@ -68,7 +68,7 @@
       },
       {
         "name": "ApplicationSecret",
-        "propertyId": "2214ebfd-9d08-42d5-bad1-1752d21ac977"
+        "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
       },
       {
         "name": "VaultId",
