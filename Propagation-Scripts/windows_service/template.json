@@ -1,44 +1,70 @@
 {
-  "version": 1,
-  "template": {
-    "command": "[CmdletBinding()]\nparam(\n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [string]$Endpoint,\n    \n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [string]$EndpointUserName,\n\n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [securestring]$EndpointPassword,\n\n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [ValidatePattern('^(?:(?:([^@\\\\]+)@|([^@\\\\]+)\\\\)?([^@\\\\]+))?$')]\n    [string]$AccountUserName,\n\n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [securestring]$NewPassword,\n\n    [Parameter()]\n    [string]$ServiceName,\n\n    [Parameter()]\n    [ValidateSet('yes','')]\n    [string]$RestartService\n)\n\n# Output the script parameters and the current user running the script\nWrite-Output -InputObject \"Running script with parameters: $($PSBoundParameters | Out-String) as [$(whoami)]\"\n\n#region Functions\n# Function to create a new PSCredential object\nfunction newCredential([string]$UserName, [securestring]$Password) {\n    New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $UserName, $Password\n}\n#endregion\n\n# Create a new PSCredential object using the provided EndpointUserName and EndpointPassword\n$credential = newCredential $EndpointUserName $EndpointPassword\n\n# Define a script block to be executed remotely on the Windows server\n$scriptBlock = {\n\n    #region functions\n    # Function to decrypt a secure string password\n    function decryptPassword {\n        param(\n            [securestring]$Password\n        )\n        try {\n            $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)\n            [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)\n        } finally {\n            ## Clear the decrypted password from memory\n            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)\n        }\n    }\n\n    function updateServiceUserPassword($ServiceInstance, [string]$UserName, [securestring]$Password) {\n        Invoke-CimMethod -InputObject $ServiceInstance -MethodName Change -Arguments @{\n            StartName     = $UserName\n            StartPassword = decryptPassword($Password)\n        }\n    }\n\n    function GetUserUPN ($UserPattern) {\n    \n        # Extract username and domain from the input pattern\n        if ($UserPattern -match '^(.+)@(.+)$') {\n            $username = $Matches[1]\n            $domain = $Matches[2]\n        } elseif ($UserPattern -match '^(.+)\\\\(.+)$') {\n            $domain = $Matches[1]\n            $username = $Matches[2]\n        } else {\n            $username = $UserPattern\n            $domain = $null\n        }\n    \n        # If domain is not an FQDN or is missing, get the current domain using WMI\n        if (-not $domain -or $domain -notmatch '\\.') {\n            $domain = (Get-CimInstance -Class Win32_ComputerSystem).Domain\n        }\n    \n        # Return the UPN\n        \"$username@$domain\"\n    }\n    #endregion\n\n    $ErrorActionPreference = 'Stop'\n\n    ## Assigning to variables inside the scriptblock allows mocking of args with Pester\n    $username = GetUserUPN($args[0])\n    $pw = $args[1]\n    $serviceNames = $args[2]\n    $restartService = $args[3]\n\n    if (-not $serviceNames) {\n        $cimFilter = \"StartName='$username'\"\n    } else {\n        $cimFilter = \"(Name='{0}') AND StartName='{1}'\" -f ($serviceNames -join \"' OR Name='\"), $username\n    }\n    $cimFilter = $cimFilter.replace('\\', '\\\\')\n\n    $serviceInstances = Get-CimInstance -ClassName Win32_Service -Filter $cimFilter\n    if ($serviceNames -and ($notFoundServices = $serviceNames.where({ $_ -notin @($serviceInstances).Name }))) {\n        Write-Output -InputObject (\"The following services could not be found on host [{0}] running as [{1}]: {2}. Skipping these services.\" -f (hostname), $username, ($notFoundServices -join ','))\n    } elseif (-not $serviceInstances) {\n        throw \"No services found on [{0}] running as [{1}] could be found.\" -f (hostname), $username\n    }\n\n    $results = foreach ($servInst in $serviceInstances) {\n        try {\n            $updateResult = updateServiceUserPassword -ServiceInstance $servInst -Username $username -Password $pw\n            if ($updateResult.ReturnValue -ne 0) {\n                throw \"Password update for service [{0}] failed with return value [{1}]\" -f $servInst.Name, $updateResult.ReturnValue\n            }\n            if ($restartService -eq 'yes' -and $servInst.State -eq 'Running') {\n                Restart-Service -Name $servInst.Name\n            }\n            $true\n        } catch {\n            $PSCmdlet.ThrowTerminatingError($_)\n        }\n    }\n    @($results).Count -eq @($serviceInstances).Count\n}\n\n## To process multiple services at once. This approach must be done because DVLS will not allow you to pass an array\n## of strings via a parameter.\n$serviceNames = $ServiceName -split ','\n\n$invParams = @{\n    ComputerName = $Endpoint\n    ScriptBlock  = $scriptBlock\n    Credential   = $credential\n    ArgumentList = $AccountUserName, $NewPassword, $serviceNames, $RestartService\n}\nInvoke-Command @invParams",
-    "configurationProperties": [
-      {
-        "id": "359ac21c-9c0f-4be2-9210-03635220a2b6",
-        "isMandatory": true,
-        "name": "Endpoint"
-      },
-      {
-        "id": "a46b5f2c-5bab-4f9c-b813-e2dff58f0714",
-        "isMandatory": true,
-        "name": "EndpointUserName"
-      },
-      {
-        "id": "51eac232-5fd4-4653-ab4d-2882b71e09dc",
-        "isMandatory": true,
-        "name": "EndpointPassword",
-        "type": 5
-      }
-    ],
-    "description": "Updates a Windows service user password for one or more Windows hosts.",
-    "executionProperties": [
-      {
-        "id": "4a77b338-c023-4b75-94ca-3a3f6266f22f",
-        "isMandatory": true,
-        "name": "AccountUserName",
-        "type": 8
-      },
-      {
-        "id": "4b996f2e-5c50-4bee-bb1d-420a7bd6cfb5",
-        "name": "ServiceName"
-      },
-      {
-        "id": "7fc569a9-1b2a-492d-ba2b-c45e8eb14c3c",
-        "name": "RestartService"
-      }
-    ],
-    "id": "b95134b4-42ff-4216-a3e2-de491d1d0432",
-    "imageName": "SampleToolsBlue",
-    "name": "Windows Service"
+    "version": 2,
+    "template": {
+      "command": "[CmdletBinding()]\nparam(\n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [string]$Endpoint,\n    \n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [string]$EndpointUserName,\n\n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [securestring]$EndpointPassword,\n\n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [ValidatePattern('^(?:(?:([^@\\\\]+)@|([^@\\\\]+)\\\\)?([^@\\\\]+))?$')]\n    [string]$AccountUserName,\n\n    [Parameter(Mandatory)]\n    [ValidateNotNullOrEmpty()]\n    [securestring]$NewPassword,\n\n    [Parameter()]\n    [string]$ServiceName,\n\n    [Parameter()]\n    [ValidateSet('yes', '')]\n    [string]$RestartService\n)\n\nfunction Write-DvlsHost($Message) {\n    Write-Output $Message\n}\n\nWrite-DvlsHost \"Starting script execution with parameters: $($PSBoundParameters | Out-String) as [$(whoami)]\"\n\n#region Functions\n# Function to create a new PSCredential object\nfunction newCredential([string]$UserName, [securestring]$Password) {\n    New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $UserName, $Password\n}\n#endregion\n\n# Create a new PSCredential object using the provided EndpointUserName and EndpointPassword\nWrite-DvlsHost \"Creating new credential for user: $EndpointUserName\"\n$credential = newCredential $EndpointUserName $EndpointPassword\n\n# Get the definition of the Write-DvlsHost function to pass to remote session\n$writeDvlsHostDef = \"function Write-DvlsHost { ${function:Write-DvlsHost} }\"\n\n# Define a script block to be executed remotely on the Windows server\n$scriptBlock = {\n    param(\n        [string]$AccountUserName,\n        [securestring]$NewPassword,\n        [string[]]$ServiceNames,\n        [string]$RestartService,\n        [string]$WriteDvlsHostDef\n    )\n\n    try {\n        # Create the Write-DvlsHost function in the remote session\n        . ([ScriptBlock]::Create($WriteDvlsHostDef))\n\n        #region functions\n        # Function to decrypt a secure string password\n        function decryptPassword {\n            param(\n                [securestring]$Password\n            )\n            try {\n                $ptr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)\n                [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)\n            } finally {\n                ## Clear the decrypted password from memory\n                [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)\n            }\n        }\n\n        function updateServiceUserPassword($ServiceInstance, [string]$UserName, [securestring]$Password) {\n            Invoke-CimMethod -InputObject $ServiceInstance -MethodName Change -Arguments @{\n                StartName     = $UserName\n                StartPassword = decryptPassword($Password)\n            }\n        }\n\n        function ConvertToUserUpn ($UserName) {\n\n            function isLocalUser ($UserName) {\n                # Validate local username format and length (max 20 chars)\n                $UserName -match '^([a-zA-Z0-9_]{1,20}|\\.\\\\[a-zA-Z0-9_]{1,20})$'\n            }\n\n            function isUpn ($UserName) {\n                $UserName -match '^(.+)@(.+)$'\n            }\n\n            if (isUpn $UserName) {\n                $UserName\n            } elseif (isLocalUser $UserName) {\n                $UserName -replace '^(?!\\.\\\\)', '.\\'\n            } else {\n                $username = $null\n                $domain = $null\n\n                # Extract username and domain from domain\\username format\n                if ($UserName -match '^(.+)\\\\(.+)$') {\n                    $domain = $Matches[1]\n                    $username = $Matches[2]\n                }\n\n                # Validate extracted values and use DomainInput if domain is not found\n                if (-not $username) {\n                    throw \"Could not determine username from user name [$UserName]\"\n                }\n\n                if (-not $domain) {\n                    $domain = (Get-CimInstance -Class Win32_ComputerSystem).Domain\n                }\n\n                \"$username@$domain\"\n            }\n        }\n        #endregion\n\n        $ErrorActionPreference = 'Stop'\n\n        $username = ConvertToUserUpn $AccountUserName\n        $pw = $NewPassword\n\n        Write-DvlsHost \"Processing services for user: $username\"\n        Write-DvlsHost \"Service names to process: $($ServiceNames -join ',')\"\n        Write-DvlsHost \"Restart service flag: $RestartService\"\n\n        if (-not $ServiceNames) {\n            $cimFilter = \"StartName='$username'\"\n        } else {\n            $cimFilter = \"(Name='{0}') AND StartName='{1}'\" -f ($ServiceNames -join \"' OR Name='\"), $username\n        }\n        $cimFilter = $cimFilter.replace('\\', '\\\\')\n        Write-DvlsHost \"Using CIM filter: $cimFilter\"\n\n        $serviceInstances = Get-CimInstance -ClassName Win32_Service -Filter $cimFilter\n        if ($ServiceNames -and ($notFoundServices = $ServiceNames.where({ $_ -notin @($serviceInstances).Name }))) {\n            Write-DvlsHost \"The following services could not be found on host [{0}] running as [{1}]: {2}. Skipping these services.\" -f (hostname), $username, ($notFoundServices -join ',')\n        } elseif (-not $serviceInstances) {\n            throw \"No services found on [{0}] running as [{1}] could be found.\" -f (hostname), $username\n        }\n\n        Write-DvlsHost \"Found $($serviceInstances.Count) services to process\"\n\n        $successResults = foreach ($servInst in $serviceInstances) {\n            try {\n                $updateResult = updateServiceUserPassword -ServiceInstance $servInst -Username $username -Password $pw\n                if ($updateResult.ReturnValue -ne 0) {\n                    throw \"Password update for service [{0}] failed with return value [{1}]\" -f $servInst.Name, $updateResult.ReturnValue\n                }\n                $servInst.Name\n            } catch {\n                throw $_\n            }\n        }\n        Write-DvlsHost \"Successfully updated passwords for the following services: $($successResults -join ',')\"\n\n        # Restart services after all password updates. This prevents issues like when mulitple services need to be updated\n        # that are running and need to be restarted but depend on one another\n        if ($RestartService -eq 'yes') {\n            Write-DvlsHost \"Restarting running services\"\n            $serviceInstances | Where-Object { $_.State -eq 'Running' } | ForEach-Object {\n                Write-DvlsHost \"Restarting service: $($_.Name)\"\n                ## -Force ensures all dependent services are also restarted\n                Restart-Service -Name $_.Name -Force\n            }\n        }\n\n        $finalResult = @($successResults).Count -eq @($serviceInstances).Count\n        if ($finalResult) {\n            Write-DvlsHost \"Processing complete. Successfully updated passwords for the following services: $($successResults -join ',')\"\n        } else {\n            throw \"Failed to update passwords for the following services: $($serviceInstances.Name -join ',')\"\n        }\n    } catch {\n        Write-DvlsHost \"Error: $($_.Exception.Message)\"\n        throw $_.Exception.Message\n    }\n}\n\n## To process multiple services at once. This approach must be done because DVLS will not allow you to pass an array\n## of strings via a parameter.\n$serviceNames = $ServiceName -split ','\nWrite-DvlsHost \"Split service names into array: $($serviceNames -join ',')\"\n\nif ($Endpoint -in ($Env:COMPUTERNAME, 'localhost', '127.0.0.1')) {\n    Write-DvlsHost \"Executing script block locally\"\n    & $scriptBlock -AccountUserName $AccountUserName -NewPassword $NewPassword -ServiceNames $serviceNames -RestartService $RestartService -WriteDvlsHostDef $writeDvlsHostDef\n} else {\n    Write-DvlsHost \"Executing script block remotely on endpoint: $Endpoint\"\n    $invParams = @{\n        ComputerName = $Endpoint\n        ScriptBlock  = $scriptBlock\n        Credential   = $credential\n        ArgumentList = $AccountUserName, $NewPassword, $serviceNames, $RestartService, $writeDvlsHostDef\n    }\n    try {\n        Invoke-Command @invParams\n    } catch {\n        Write-DvlsHost \"Error: $($_.Exception.Message)\"\n        throw $_.Exception.Message\n    }\n}",
+      "configurationProperties": [
+        {
+          "id": "c503be80-a7e0-4b51-95a9-b40be0bc583e",
+          "isMandatory": true,
+          "name": "Endpoint"
+        },
+        {
+          "id": "da3b2d0e-2be0-4dba-b2fa-df6413897fd6",
+          "isMandatory": true,
+          "name": "EndpointUserName"
+        },
+        {
+          "id": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
+          "isMandatory": true,
+          "name": "EndpointPassword",
+          "type": 3
+        },
+        {
+          "id": "3869c082-e8cf-4828-af6e-731111e4f031",
+          "name": "ServiceName"
+        },
+        {
+          "id": "2c521af6-9e4d-4f5e-a8f7-f0ce58bc0015",
+          "name": "RestartService"
+        }
+      ],
+      "description": "Updates a Windows service user password for one or more Windows hosts.",
+      "executionProperties": [],
+      "id": "c9e348e4-548f-43a6-9de4-207d35a1273d",
+      "imageName": "SampleToolsBlue",
+      "name": "Windows Service",
+      "parameters": [
+        {
+          "name": "Endpoint",
+          "propertyId": "c503be80-a7e0-4b51-95a9-b40be0bc583e"
+        },
+        {
+          "name": "EndpointUserName",
+          "propertyId": "da3b2d0e-2be0-4dba-b2fa-df6413897fd6"
+        },
+        {
+          "name": "EndpointPassword",
+          "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b"
+        },
+        {
+          "name": "ServiceName",
+          "propertyId": "3869c082-e8cf-4828-af6e-731111e4f031"
+        },
+        {
+          "name": "RestartService",
+          "propertyId": "2c521af6-9e4d-4f5e-a8f7-f0ce58bc0015"
+        },
+        {
+          "name": "AccountUserName",
+          "propertyId": "c24049c5-9ec4-4f26-832c-86f283067c73",
+          "source": 1
+        },
+        {
+          "name": "NewPassword",
+          "propertyId": "05799f12-c6d9-4266-94f7-42b50e3d4a6b",
+          "source": 1
+        }
+      ],
+      "version": 2
+    }
   }
-}
