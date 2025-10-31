@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: MIT OR Apache-2.0 -->
-# PAM - AnyIdentity Providers
+# PAM - Custom PAM providers
 
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-informational?style=flat-square)](COPYRIGHT.md)
 
-AnyIdentity providers made by the Devolutions team or provided by the community.
+Custom PAM providers made by the Devolutions team or provided by the community.
 
 ## Table of Contents
 
@@ -14,7 +14,7 @@ AnyIdentity providers made by the Devolutions team or provided by the community.
 
 ## Usage
 
-See [the import file](How-To-Import.md)!  You can also have a more visual experience by consulting the [Devolutions knowledge base][knowledge-base-anyidentity].
+See [the import file](How-To-Import.md)!  You can also have a more visual experience by consulting the [Devolutions knowledge base][knowledge-base-CustomPAMProvider].
 
 ## Contributing
 
@@ -40,4 +40,4 @@ The [SPDX](https://spdx.dev) license identifier for this project is `MIT OR Apac
 
 
 [devolutions-forum]: https://forum.devolutions.net/product/server
-[knowledge-base-anyidentity]: https://docs.devolutions.net/kb/devolutions-server/how-to-articles/create-anyidentity-pam-provider
+[knowledge-base-CustomPAMProvider]: https://docs.devolutions.net/pam/server/providers/anyidentity-providers/

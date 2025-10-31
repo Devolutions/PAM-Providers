@@ -1,6 +1,6 @@
 
-The AnyIdentity Templates page can be found in the Providers page.
-*Administration/PrivilegedAccess/Provider/AnyIdentityTemplates*
+Custom PAM provider templates page can be found in the Providers page.
+*Administration/PrivilegedAccess/Provider/Custom PAM provider templates*
 
 ![alt text](./Images/6b59fb3e-9b89-4b76-887b-fe769598462c.png)
 

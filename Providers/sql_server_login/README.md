@@ -1,6 +1,6 @@
-# SQL Server Login AnyIdentity Provider
+# SQL Server Login Custom PAM Provider
 
-This SQL Server Login AnyIdentity provider is designed to integrate with the Devolutions Server PAM module to manage SQL Server login credentials. It enables automated account discovery and password rotation for SQL Server logins.
+This SQL Server Login Custom PAM provider is designed to integrate with the Devolutions Server PAM module to manage SQL Server login credentials. It enables automated account discovery and password rotation for SQL Server logins.
 
 ## Capabilities
 

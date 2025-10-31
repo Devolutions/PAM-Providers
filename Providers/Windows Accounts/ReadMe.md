@@ -1,6 +1,6 @@
 ## Windows Accounts Provider
 
-This provider allow you to manage local windows account on many hosts. A Windows Account provider already exists built-in in Devolutions Server, but that provider allow you to manage only one host. This AnyIdentity provider will allow you to manage many hosts, all managed by the same provider.
+This provider allow you to manage local windows account on many hosts. A Windows Account provider already exists built-in in Devolutions Server, but that provider allow you to manage only one host. This Custom PAM provider will allow you to manage many hosts, all managed by the same provider.
 
 ## Prerequisites
 
