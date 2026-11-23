@@ -168,9 +168,9 @@ Now that the Azure Key Vault is setup for use with the Devolutions Server PAM mo
 
     ![Add New Provider](../../Images/azure-key-vault/akv-27-add-provider-template.png)
 
-16. Click on the **AnyIdentity** section and the **Azure Key Vault** provider.
+16. Click on the **Custom** section and the **Azure Key Vault** provider.
 
-    ![Select AnyIdentity Provider](../../Images/azure-key-vault/akv-28-select-anyidentity-provider.png)
+    ![Select Custom PAM Provider](../../Images/azure-key-vault/akv-28-select-anyidentity-provider.png)
 
 17. Enter a **Name** for the Provider, here **Azure Key Vault** is used. Scroll down and enter the **TenantID** (Azure), **ApplicationID** (Azure Application Registration ID property), **Password**, and **KeyVaultName**. Check the options to **"Add PAM vault"** and **"Add Scan Configuration"**. Finally, click the **Save** button.
 

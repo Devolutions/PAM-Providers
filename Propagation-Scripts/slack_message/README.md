@@ -12,7 +12,7 @@ This secret propagation script is designed to send notifications to a Slack chan
 
 ## Prerequisites
 
-For your AnyIdentity propagation script to communicate with a Slack workspace, you must first create a Slack app. A Slack app is a way that Slack controls authentication and programmatic access to your workspace.
+For your propagation script to communicate with a Slack workspace, you must first create a Slack app. A Slack app is a way that Slack controls authentication and programmatic access to your workspace.
 
 TO create a Slack app, navigate to the [Slack API page](https://api.slack.com/apps?new_app=1) and click "Create an App".
 
@@ -32,7 +32,7 @@ Next, click on **Add New Webhook to Workspace**.
 
 ![alt text](image-3.png)
 
-And select a channel or user to send the AnyIdentity propagation notifications to. This will create the webhook URL.
+And select a channel or user to send the propagation notifications to. This will create the webhook URL.
 
 ![alt text](image-4.png)
 

@@ -33,13 +33,13 @@ param (
 	$obj = New-Object System.DirectoryServices.AccountManagement.PrincipalContext -ArgumentList $ct
 	$BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($Password)
 	$UnsecurePassword = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
-	
+
 	$result = $obj.ValidateCredentials($Username, $UnsecurePassword)
 	if ($result -ne $true)
 	{
 		Write-Error "The username or password does not match the credential on the machine";
 	}
-	
+
 	Write-Output $result
 }
 
@@ -49,7 +49,7 @@ function Get-WinRMNetworkParameters
 		[Parameter(Mandatory = $True)]
 		[ValidateNotNullOrEmpty()]
 		[String]$HostName)
-	
+
 	switch ($HostName)
 	{
 		({ (Resolve-DnsName -Name $_ -ErrorAction SilentlyContinue).IPAddress })
@@ -78,7 +78,7 @@ function Get-WinRMNetworkParameters
 					}
 					return $SessionParameters
 				}
-				
+
 				({
 						#check if host supports non SSL Port
 						[System.Net.Sockets.TcpClient]::new().ConnectAsync($_, 5985).Wait(100)
@@ -96,7 +96,7 @@ function Get-WinRMNetworkParameters
 					}
 					return $SessionParameters
 				}
-								
+
 				default
 				{
 					Write-Error "No connectivity on TCP ports 5985 or 5986 to $Hostname"
@@ -116,7 +116,7 @@ function Get-WinRMSession
 		[ValidateNotNullOrEmpty()]
 		[System.Management.Automation.PSCredential]$Credential
 	)
-	
+
 	$WinRMNetworkParameters.Add("ErrorAction", "Stop")
 	Try
 	{
@@ -147,7 +147,7 @@ function Get-WinRMSession
 	}
 	If ($RemoteSession.State -eq 'Opened')
 	{
-		return $RemoteSession	
+		return $RemoteSession
 	}
 }
 
@@ -160,13 +160,16 @@ If ($WinRMNetworkParameters.Port)
 	{
 		Try
 		{
-			$Results = Invoke-Command -Session $PSSession -ArgumentList @($UserName, $Password) -ScriptBlock $RemoteHostScript
+			$Results = Invoke-Command -Session $PSSession -ArgumentList @($UserName, $Password) -ErrorVariable errmsg -ScriptBlock $RemoteHostScript
+			if ($errmsg -ne $null -and $errmsg -ne "") {
+                Write-Error $errmsg
+            }
 		}
 		Catch
 		{
 			Write-Error $Error[0].Exception.ToString()
 		}
-		
+
 		Remove-PSSession -Session $PSSession
 		$PSSession = $null
 		Write-Output $Results
