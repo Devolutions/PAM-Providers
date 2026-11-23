@@ -31,6 +31,7 @@ You can run the included `prerequisites.tests.ps1` script against the target ser
 | `EndpointUserName`  | The username used to authenticate to the endpoint       | Yes       | `"administrator"`      |
 | `EndpointPassword`  | The password for EndpointUserName as a secure string    | Yes       | SecureString           |
 | `AccountUserName`   | The username of the service account, without domain (use `AccountUserNameDomain` for the domain) | Yes       | `"svc-sql"`     |
+| `AccountUserNameDomain` | For a domain account, the domain as an FQDN. Leave empty for a local account. Services are matched on `user@domain` and on `DOMAIN\user`, where `DOMAIN` is the NetBIOS name the target resolves for the account; if the account cannot be resolved there, the first DNS label is used instead (`corp` for `corp.contoso.com`), which misses services when the NetBIOS name differs. | No | `"corp.contoso.com"` |
 | `NewPassword`       | The new password for the service account as a secure string | Yes   | SecureString           |
 | `ServiceName`       | The name of the service(s) to update, comma-separated for multiple services | No | `"Service1, Service2"` |
 | `RestartService`    | Whether to restart the service(s) after updating the password | No | `yes` |

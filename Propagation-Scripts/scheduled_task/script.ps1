@@ -78,12 +78,19 @@ $scriptBlock = {
         }
     }
 
+    # Each distinct task user is resolved once: a host has many tasks but few users, and on a domain-joined host
+    # a name that cannot be resolved can wait on a domain controller.
+    $sidCache = @{}
+
     # Function to check whether a task runs as the account. The task scheduler stores the user in several forms
     # (DOMAIN\user, user, user@domain.com, or a SID), so compare SIDs, and fall back to the names when one cannot be resolved.
     function isTaskAccount([string]$TaskUserId, [string]$AccountName, [string]$AccountSid) {
         if (-not $TaskUserId) { return $false }
         if ($TaskUserId -eq $AccountName) { return $true }
-        $taskSid = if ($TaskUserId -match '^S-1-') { $TaskUserId } else { resolveSid $TaskUserId }
+        if (-not $sidCache.ContainsKey($TaskUserId)) {
+            $sidCache[$TaskUserId] = if ($TaskUserId -match '^S-1-') { $TaskUserId } else { resolveSid $TaskUserId }
+        }
+        $taskSid = $sidCache[$TaskUserId]
         $AccountSid -and $taskSid -and ($taskSid -eq $AccountSid)
     }
     #endregion

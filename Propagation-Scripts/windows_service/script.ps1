@@ -130,11 +130,26 @@ function GetServiceAccountNames {
             "$Domain\$Username" ## domain\user
         )
     } else {
-        ## Domain account with domain as FQDN
+        ## Domain account with domain as FQDN. The NETBIOS\user form is asked from the host (account -> SID -> account),
+        ## because the NetBIOS name can differ from the first DNS label (corp.contoso.com can be CONTOSO).
+        $netbiosAccount = $null
+        foreach ($candidate in "$Username@$Domain", "$Domain\$Username") {
+            try {
+                $sid = (New-Object System.Security.Principal.NTAccount($candidate)).Translate([System.Security.Principal.SecurityIdentifier])
+                $netbiosAccount = $sid.Translate([System.Security.Principal.NTAccount]).Value
+                break
+            } catch {
+                ## not resolvable in this form: try the next one
+            }
+        }
+        if (-not $netbiosAccount) {
+            ## Fallback when the account cannot be resolved: assume the NetBIOS name is the first DNS label
+            $netbiosAccount = "$($Domain.split('.')[0])\$Username"
+        }
         @(
             "$Username@$Domain", ## user@domain.local
-            "$($Domain.split('.')[0])\$Username" ## domain\user
-        )
+            $netbiosAccount ## DOMAIN\user
+        ) | Select-Object -Unique
     }
 }
 
