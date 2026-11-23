@@ -56,8 +56,8 @@ param(
     [Parameter(Mandatory)]
     [ValidateNotNullOrEmpty()]
     [ValidatePattern(
-        '^\w+$',
-        ErrorMessage = 'You must provide the AccountUserName parameter as a flat name like "user"; not domain\user, et al. To specify a domain, use the AccountUserNameDomain parameter.'
+        '^[^\\/@"\[\]:;|=,+*?<>]+$',
+        ErrorMessage = 'You must provide the AccountUserName parameter as a flat name like "user" or "svc-sql"; not domain\user, et al. To specify a domain, use the AccountUserNameDomain parameter.'
     )]
     [string]$AccountUserName,
 
@@ -79,8 +79,8 @@ param(
 # Output the script parameters and the current user running the script
 Write-Output -InputObject "Running script with parameters: $($PSBoundParameters | Out-String) as [$(whoami)]"
 
-if ($AccountUserNameDomain -and $AccountUserNameDomain -notmatch '^\w+\.\w+$') {
-    throw 'When using the AccountUserNameDomain parameter, you must provide the domain as an FQDN (domain.local)'
+if ($AccountUserNameDomain -and $AccountUserNameDomain -notmatch '^[\w-]+(\.[\w-]+)+$') {
+    throw 'When using the AccountUserNameDomain parameter, you must provide the domain as an FQDN (domain.local, corp.contoso.com)'
 }
 
 #region Functions
@@ -174,6 +174,11 @@ $scriptBlock = {
 
     $ErrorActionPreference = 'Stop'
 
+    ## Escapes a value for a WQL string literal (backslash and single quote)
+    function wqlValue([string]$Value) {
+        $Value.Replace('\', '\\').Replace("'", "\'")
+    }
+
     ## Assigning to variables inside the scriptblock allows mocking of args with Pester
     $userName = $args[0]
     $userDomain = $args[2]
@@ -205,14 +210,13 @@ $scriptBlock = {
         $getSrvAccountNamesParams.Domain = $userDomain
     }
     [array]$serviceAccountNames = GetServiceAccountNames @getSrvAccountNamesParams
-    $startNameCimQuery = "(StartName = '{0}')" -f ($serviceAccountNames -join "' OR StartName = '") ## (StartName = 'user@domain.local' OR StartName = 'domain\user')
+    $startNameCimQuery = '({0})' -f (($serviceAccountNames | ForEach-Object { "StartName = '{0}'" -f (wqlValue $_) }) -join ' OR ') ## (StartName = 'user@domain.local' OR StartName = 'domain\\user')
 
     if (-not $serviceNames) {
         $cimFilter = $startNameCimQuery
     } else {
-        $cimFilter = "(Name='{0}') AND {1}" -f ($serviceNames -join "' OR Name='"), $startNameCimQuery
+        $cimFilter = '({0}) AND {1}' -f (($serviceNames | ForEach-Object { "Name = '{0}'" -f (wqlValue $_) }) -join ' OR '), $startNameCimQuery
     }
-    $cimFilter = $cimFilter.replace('\', '\\')
     
     $serviceInstances = Get-CimInstance -ClassName Win32_Service -Filter $cimFilter
     if (-not $serviceInstances) {
@@ -236,19 +240,13 @@ $scriptBlock = {
     @($results).Count -eq @($serviceInstances).Count
 }
 
-## Ensures args passed to Invoke-Command always have the same count to check inside of the scriptblock
-$icmArgsList = $AccountUserName, $NewPassword
-@('AccountUserNameDomain', 'ServiceName', 'RestartService') | ForEach-Object {
-    if ($PSBoundParameters.ContainsKey($_) -and $_ -ne 'ServiceName') {
-        $icmArgsList += $PSBoundParameters[$_]
-    } elseif ($_ -eq 'ServiceName') {
-        ## To process multiple services at once. This approach must be done because DVLS will not allow you to pass an array
-        ## of strings via a parameter.
-        $icmArgsList += $ServiceName -split ','
-    } else {
-        $icmArgsList += $null
-    }
-}
+## To process multiple services at once. This approach must be done because DVLS will not allow you to pass an array
+## of strings via a parameter. Entries are trimmed ("svc1, svc2" works) and empty entries are dropped.
+$serviceNames = @($ServiceName -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+
+## Always the same five args for the scriptblock: user, password, domain, service names (one array), restart.
+## The service names must stay one element: adding the array with += would spread them over the next args.
+$icmArgsList = $AccountUserName, $NewPassword, $PSBoundParameters['AccountUserNameDomain'], $serviceNames, $PSBoundParameters['RestartService']
 
 #region Create a new PSSession
 $sessParams = @{
@@ -258,24 +256,26 @@ $sessParams = @{
 $session = New-PSSession @sessParams
 #endregion
 
-#region Load all of the local functions into the PSsession
-ForEach ($func in @('decryptPassword','updateServiceUserPassword','GetServiceAccountNames','ValidateUserAccountPassword','testIsOnDomain')) {
-	$lfunctions += "function $((Get-Item Function:\$func).Name) {$((Get-Item Function:\$func).ScriptBlock)};"
+try {
+    #region Load all of the local functions into the PSsession
+    ForEach ($func in @('decryptPassword','updateServiceUserPassword','GetServiceAccountNames','ValidateUserAccountPassword','testIsOnDomain')) {
+        $lfunctions += "function $((Get-Item Function:\$func).Name) {$((Get-Item Function:\$func).ScriptBlock)};"
+    }
+
+    $loadFunctionsBlock = {
+        . ([scriptblock]::Create($args[0]))
+    }
+
+    Invoke-Command -Session $session -ScriptBlock $loadFunctionsBlock -ArgumentList $lfunctions
+    #endregion
+
+    ## Invoke the main code execution
+    $invParams = @{
+        Session      = $session
+        ScriptBlock  = $scriptBlock
+        ArgumentList = $icmArgsList
+    }
+    Invoke-Command @invParams
+} finally {
+    $session | Remove-PSSession
 }
-
-$loadFunctionsBlock = {
-	. ([scriptblock]::Create($args[0]))
-}
-
-Invoke-Command -Session $session -ScriptBlock $loadFunctionsBlock -ArgumentList $lfunctions
-#endregion
-
-## Invoke the main code execution
-$invParams = @{
-    Session = $session
-    ScriptBlock  = $scriptBlock
-    ArgumentList = $icmArgsList
-}
-Invoke-Command @invParams
-
-$session | Remove-PSSession

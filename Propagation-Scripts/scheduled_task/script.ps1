@@ -58,7 +58,6 @@ $scriptBlock = {
             [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)
         }
     }
-    #endregion
 
     # Set the error action preference to stop execution if an error occurs
     $ErrorActionPreference = 'Stop'
@@ -69,6 +68,26 @@ $scriptBlock = {
     $scheduledTaskNames = $args[2]
     $scheduledTaskPaths = $args[3]
 
+    # Function to resolve an account name to its SID on this host, or $null when it cannot be resolved
+    function resolveSid([string]$AccountName) {
+        if (-not $AccountName) { return $null }
+        try {
+            (New-Object System.Security.Principal.NTAccount($AccountName)).Translate([System.Security.Principal.SecurityIdentifier]).Value
+        } catch {
+            $null
+        }
+    }
+
+    # Function to check whether a task runs as the account. The task scheduler stores the user in several forms
+    # (DOMAIN\user, user, user@domain.com, or a SID), so compare SIDs, and fall back to the names when one cannot be resolved.
+    function isTaskAccount([string]$TaskUserId, [string]$AccountName, [string]$AccountSid) {
+        if (-not $TaskUserId) { return $false }
+        if ($TaskUserId -eq $AccountName) { return $true }
+        $taskSid = if ($TaskUserId -match '^S-1-') { $TaskUserId } else { resolveSid $TaskUserId }
+        $AccountSid -and $taskSid -and ($taskSid -eq $AccountSid)
+    }
+    #endregion
+
     #region Find all of the requested scheduled tasks
     $getSchedTaskParams = @{}
     if ($scheduledTaskNames) {
@@ -78,7 +97,8 @@ $scriptBlock = {
         $getSchedTaskParams.TaskPath = $scheduledTaskPaths
     }
     # Get scheduled tasks based on the provided task names and paths, and filter by the specified user
-    [array]$schedTasks = Get-ScheduledTask @getSchedTaskParams | Where-Object { $_.Principal.UserId -eq $userName }
+    $accountSid = resolveSid $username
+    [array]$schedTasks = Get-ScheduledTask @getSchedTaskParams | Where-Object { isTaskAccount $_.Principal.UserId $username $accountSid }
     if (-not $schedTasks) {
         throw "No scheduled tasks found on [{0}] running as [{1}] could be found." -f (hostname), $username
     } elseif ($scheduledTaskNames -and ($notFoundScheduledTasks = $scheduledTaskNames.where({ $_ -notin $schedTasks.TaskName }))) {
@@ -105,8 +125,9 @@ $scriptBlock = {
 
 ## To process multiple scheduled tasks at once. This approach must be done because DVLS will not allow you to pass an array
 ## of strings via a parameter.
-$scheduledTaskNames = $ScheduledTaskName -split ','
-$scheduledTaskPaths = $ScheduledTaskPath -split ','
+## Entries are trimmed ("task1, task2" works) and empty entries are dropped.
+$scheduledTaskNames = @($ScheduledTaskName -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+$scheduledTaskPaths = @($ScheduledTaskPath -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 
 # Define parameters for Invoke-Command
 $invParams = @{
