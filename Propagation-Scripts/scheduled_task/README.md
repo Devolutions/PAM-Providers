@@ -17,6 +17,8 @@ Before using this script, ensure you meet the following prerequisites:
 - PowerShell 5.1 or higher installed and available on target server.
 - User connecting to the target server has local admin privileges on the target server.
 - Windows remote management is available on the target server.
+- For a local account on the target server, write `EndpointUserName` with its prefix: `.\admin` or `SERVER01\admin`. A bare local name such as `admin` is refused by WinRM ("A specified logon session does not exist", error 0x8009030d).
+- If the connection fails with "Access is denied", the endpoint user is not a local administrator on the target. If it fails with "The user name or password is incorrect", check `EndpointPassword`.
 
 You can run the included `prerequisites.tests.ps1` script against the target server(s) with intended user credentials to ensure all prereqs are met.
 
@@ -27,7 +29,7 @@ You can run the included `prerequisites.tests.ps1` script against the target ser
 | `Endpoint`          | The hostname or IP address of the target Windows server.            |    Yes    | `"server.example.com"`              |
 | `EndpointUserName`  | The username for connecting to the endpoint.                        |    Yes    | `"adminUser"`                       |
 | `EndpointPassword`  | The password for the endpoint user, as a secure string.             |    Yes    | `(ConvertTo-SecureString -String "Password123!" -AsPlainText -Force)` |
-| `AccountUserName`   | The username of the account whose scheduled tasks are to be updated.|    Yes    | `"serviceAccount"`                  |
+| `AccountUserName`   | The username of the account whose scheduled tasks are to be updated. `user`, `DOMAIN\user` and `user@domain.com` all match the task's account. |    Yes    | `"serviceAccount"`                  |
 | `NewPassword`       | The new password for the account, as a secure string.               |    Yes    | `(ConvertTo-SecureString -String "NewPassword!" -AsPlainText -Force)` |
-| `ScheduledTaskName` | (Optional) The name of a specific scheduled task to update.         |    No     | `"BackupTask"`                      |
+| `ScheduledTaskName` | (Optional) The name of the scheduled task(s) to update, comma-separated for several. |    No     | `"BackupTask, ReportTask"`          |
 | `ScheduledTaskPath` | (Optional) The path for specific scheduled tasks to be updated.     |    No     | `"\Maintenance\"`                 |
